@@ -1,0 +1,24 @@
+# AI ISP Chatbot Platform — Dependencies
+
+# Core
+requests>=2.31.0
+
+# LLM / Embeddings
+sentence-transformers>=2.2.0
+
+# Vector Database
+chromadb>=0.4.0
+
+# Excel file reading (RAG knowledge base)
+pandas>=2.0.0
+openpyxl>=3.1.0
+xlrd>=2.0.0
+
+# MySQL Database
+pymysql>=1.1.0
+
+# Telegram Bot (optional — for presentation layer)
+python-telegram-bot>=20.0
+
+# Utilities
+python-dotenv>=1.0.0
