@@ -7,6 +7,12 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 SUPPORT_FALLBACK_MESSAGE: str = "يرجى المتابعة مع الدعم الفني عبر واتساب: https://wa.me/967770000000"
 
 
@@ -29,8 +35,8 @@ class LLMConfig:
     provider: str = "gemini"  
     # provider: str = "ollama"  
     use_for_intent: bool = True
-    gemini_api_key: str = "AIzaSyCEOih0MS7EpHbJ6_-CcGVhTCStpDHojVM"
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-3.5-flash"
     ollama_url: str = "http://localhost:11434/api/generate"
     ollama_model: str = "dagbs/qwen2.5-coder-7b-instruct-abliterated:latest"
     temperature: float = 0.1
@@ -44,7 +50,7 @@ class LLMConfig:
 class CRMConfig:
  
     base_url: str = "http://localhost:8090/api/crm"
-    api_key: str = "test-api-key-12345"
+    api_key: str = ""
     timeout: int = 30
     max_retries: int = 3
     retry_delay: float = 1.0
@@ -55,9 +61,9 @@ class DatabaseConfig:
  
     host: str = "localhost"
     port: int = 3306
-    user: str = "chatbot_user"
-    password: str = "chatbot_pass"
-    database: str = "isp_chatbot"
+    user: str = ""
+    password: str = ""
+    database: str = ""
     pool_size: int = 5
     charset: str = "utf8mb4"
 

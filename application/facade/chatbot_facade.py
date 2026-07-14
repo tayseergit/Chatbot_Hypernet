@@ -18,7 +18,6 @@ from application.crm_integration.crm_service import CRMService
 from application.llm.llm_service import LLMService
 from application.response_generation.response_service import ResponseService
 from application.analytics.analytics_service import AnalyticsService
-from application.facade.service_dispatcher import ServiceDispatcher
 from application.facade.workflow_coordinator import WorkflowCoordinator
 from application.message_bus.broker import MessageBroker
 from application.message_bus.events.intent_analyzed import IntentAnalyzedEvent
@@ -56,11 +55,10 @@ class ChatbotFacade:
         self._response_service = ResponseService()
         self._analytics = AnalyticsService()
 
-        # Wire up dispatcher and coordinator
-        self._dispatcher = ServiceDispatcher(
+        # Wire up coordinator
+        self._coordinator = WorkflowCoordinator(
             self._rag_service, self._crm_service, self._llm_service,
         )
-        self._coordinator = WorkflowCoordinator(self._dispatcher)
 
         # Wire agent with LLM for advanced classification
         self._agent.set_llm_service(self._llm_service)

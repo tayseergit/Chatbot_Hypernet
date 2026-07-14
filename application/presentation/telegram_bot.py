@@ -5,8 +5,8 @@ Uses python-telegram-bot library for Telegram Bot API integration.
 Routes all messages through ChatbotFacade.
 """
 
-from application.shared.configuration.app_config import SUPPORT_FALLBACK_MESSAGE
 import logging
+import asyncio
 from typing import Optional
 
 from application.monitoring.logger import AppLogger
@@ -86,7 +86,7 @@ class TelegramBot:
     async def _handle_stats(self, update, context) -> None:
         """Handle /stats command."""
         import json
-        stats = self._facade.get_analytics()
+        stats = await asyncio.to_thread(self._facade.get_analytics)
         text = f"📊 إحصائيات النظام:\n\n"
         text += f"إجمالي الاستفسارات: {stats.get('total_queries', 0)}\n"
         text += f"الجلسات النشطة: {stats.get('active_sessions', 0)}\n"
@@ -104,7 +104,9 @@ class TelegramBot:
             await update.message.chat.send_action("typing")
 
             # Process through facade
-            response = self._facade.handle_message(user_id, message_text)
+            response = await asyncio.to_thread(
+                self._facade.handle_message, user_id, message_text
+            )
 
             # Send response
             await update.message.reply_text(response.text)

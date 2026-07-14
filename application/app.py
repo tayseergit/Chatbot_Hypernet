@@ -27,7 +27,7 @@ class Application:
         )
         self._facade: ChatbotFacade = None
 
-    def start(self, knowledge_file: str = None, mode: str = "console") -> None:
+    def start(self, knowledge_file: str = None, mode: str = "telegram") -> None:
          
         self._logger.info("Starting AI ISP Chatbot Platform...")
 
