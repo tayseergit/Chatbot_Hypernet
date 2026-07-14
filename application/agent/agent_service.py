@@ -32,12 +32,9 @@ class AgentService:
 
         ctx = context or {}
 
-        # Step 1: Classify intent
-        intent, confidence = self.classifier.classify(message, ctx)
-        self._logger.info(f"Intent: '{intent}' (confidence: {confidence:.2f})")
-
-        # Step 2: Get required services
-        required_services = self.classifier.get_required_services(intent)
+        # Step 1 & 2: Classify intent and decide required services dynamically
+        intent, required_services, confidence, reasoning = self.classifier.classify_decision(message, ctx)
+        self._logger.info(f"Intent: '{intent}', Requires: {required_services} (confidence: {confidence:.2f})")
 
         # Step 3: Build parameters
         params = self._extract_parameters(message, intent, ctx)
@@ -48,30 +45,11 @@ class AgentService:
             requires=required_services,
             parameters=params,
             confidence=confidence,
-            reasoning=f"Classified as '{intent}' with confidence {confidence:.2f}",
+            reasoning=reasoning,
         )
 
         self._logger.info(f"Decision: {decision.to_dict()}")
         return decision
-
-    def build_response_instruction(
-        self, intent: str, service_results: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        
-        instruction = {
-            "intent": intent,
-            "tone": "professional",
-            "language": "arabic",
-            "include_sources": True,
-        }
-
-        if intent in ("greeting", "goodbye"):
-            instruction["tone"] = "friendly"
-            instruction["include_sources"] = False
-        elif intent in ("open_ticket", "billing"):
-            instruction["tone"] = "empathetic"
-
-        return instruction  
 
     def _extract_parameters(
         self, message: str, intent: str, context: Dict[str, Any]

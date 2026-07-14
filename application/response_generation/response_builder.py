@@ -2,6 +2,7 @@
 
 from typing import Any, Dict, List, Optional
 from application.shared.dto.service_result import ServiceResult
+from application.shared.configuration.app_config import SUPPORT_FALLBACK_MESSAGE
 from application.monitoring.logger import AppLogger
 
 
@@ -35,7 +36,7 @@ class ResponseBuilder:
             context = rag_result.data.get("context", "")
             if context:
                 return f"المعلومات المتوفرة:\n{context}"
-        return "عذراً، لم أتمكن من معالجة طلبك. يرجى المحاولة لاحقاً."
+        return SUPPORT_FALLBACK_MESSAGE
 
     def _format_crm_data(self, data: Dict) -> str:
         """Simple formatting of CRM data."""

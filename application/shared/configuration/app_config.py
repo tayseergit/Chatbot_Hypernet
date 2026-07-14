@@ -7,36 +7,42 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional
 
+SUPPORT_FALLBACK_MESSAGE: str = "يرجى المتابعة مع الدعم الفني عبر واتساب: https://wa.me/967770000000"
+
 
 @dataclass
 class RAGConfig:
-    """RAG system configuration."""
-
+ 
+    # knowledge_file: str = "chatbot_knowledge_base.md"
     knowledge_file: str = "chatbot.xls"
-    chunk_size: int = 500
+    chunk_size: int = 350
     overlap: int = 50
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     collection_name: str = "isp_knowledge"
-    n_results: int = 5
+    n_results: int = 2
     distance_threshold: float = 25.0
 
 
 @dataclass
 class LLMConfig:
 
+    provider: str = "gemini"  
+    # provider: str = "ollama"  
+    use_for_intent: bool = True
+    gemini_api_key: str = "AIzaSyCEOih0MS7EpHbJ6_-CcGVhTCStpDHojVM"
+    gemini_model: str = "gemini-2.5-flash"
     ollama_url: str = "http://localhost:11434/api/generate"
     ollama_model: str = "dagbs/qwen2.5-coder-7b-instruct-abliterated:latest"
     temperature: float = 0.1
     top_p: float = 0.8
-    top_k: int = 40
-    num_ctx: int = 4096
+    top_k: int = 5
+    num_ctx: int = 500
     request_timeout: int = 120
 
 
 @dataclass
 class CRMConfig:
-    """CRM integration configuration."""
-
+ 
     base_url: str = "http://localhost:8090/api/crm"
     api_key: str = "test-api-key-12345"
     timeout: int = 30
@@ -46,8 +52,7 @@ class CRMConfig:
 
 @dataclass
 class DatabaseConfig:
-    """MySQL database configuration."""
-
+ 
     host: str = "localhost"
     port: int = 3306
     user: str = "chatbot_user"
@@ -133,6 +138,10 @@ class AppConfig:
         config.rag.n_results = int(os.getenv("RAG_N_RESULTS", config.rag.n_results))
 
         # LLM
+        config.llm.provider = os.getenv("LLM_PROVIDER", config.llm.provider)
+        config.llm.use_for_intent = os.getenv("LLM_USE_FOR_INTENT", "true").lower() == "true"
+        config.llm.gemini_api_key = os.getenv("GEMINI_API_KEY", config.llm.gemini_api_key)
+        config.llm.gemini_model = os.getenv("GEMINI_MODEL", config.llm.gemini_model)
         config.llm.ollama_url = os.getenv("OLLAMA_URL", config.llm.ollama_url)
         config.llm.ollama_model = os.getenv("OLLAMA_MODEL", config.llm.ollama_model)
         config.llm.temperature = float(

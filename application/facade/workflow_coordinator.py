@@ -1,94 +1,88 @@
-"""Workflow coordinator — executes multi-step workflows based on agent decisions."""
-
-from typing import Any, Dict, Optional
-from application.facade.service_dispatcher import ServiceDispatcher
+ 
+from typing import Dict, Any
 from application.shared.dto.agent_decision import AgentDecision
-from application.shared.dto.service_result import ServiceResult
+from application.facade.service_dispatcher import ServiceDispatcher
 from application.monitoring.logger import AppLogger
-from application.aspects.logging_aspect import log_operation
-from application.aspects.metrics_aspect import track_metrics
 
 
 class WorkflowCoordinator:
-    """
-    Executes multi-step workflows determined by agent decisions.
-
-    Handles: RAG-only, CRM-only, RAG+CRM, and direct workflows.
-    Manages ordering and dependency between steps.
-    """
+    """Coordinates execution of services based on AgentDecision."""
 
     def __init__(self, dispatcher: ServiceDispatcher):
         self._dispatcher = dispatcher
         self._logger = AppLogger.get_logger("workflow_coordinator")
 
-    @log_operation()
-    @track_metrics("workflow_execute")
-    def execute_workflow(self, decision: AgentDecision,
-                         user_message: str) -> Dict[str, Any]:
-        """
-        Execute a complete workflow based on agent decision.
+    def execute_workflow(self, decision: AgentDecision, message_text: str) -> Dict[str, Any]:
+        """Execute required services and gather results to generate an LLM response."""
+        requires = decision.requires
+        self._logger.info(f"Executing workflow for intent '{decision.intent}', requiring: {requires}")
+        
+        rag_result = None
+        crm_result = None
+        rag_context = ""
+        crm_data = {}
 
-        Returns dict with: rag_result, crm_result, llm_answer
-        """
-        results: Dict[str, Any] = {
-            "rag_result": None, "crm_result": None, "llm_answer": "",
+        # 1. Execute RAG if required
+        if "RAG" in requires:
+            query = decision.parameters.get("query", message_text)
+            rag_result = self._dispatcher.dispatch_rag(query)
+            rag_data = rag_result.data if rag_result.success else []
+            
+            # Format RAG context as string
+            if isinstance(rag_data, list):
+                rag_context = "\n\n".join([str(item) for item in rag_data])
+            else:
+                rag_context = str(rag_data)
+
+        # 2. Execute CRM if required
+        if "CRM" in requires:
+            operation = self._map_intent_to_crm_operation(decision.intent)
+            crm_result = self._dispatcher.dispatch_crm(operation, decision.parameters)
+            # If CRM fails, we want to inform the LLM so it can tell the user gracefully
+            crm_data = crm_result.data if crm_result.success else {"error": crm_result.error}
+
+        # 3. Dispatch to the appropriate LLM Prompt Pipeline
+        if "RAG" in requires and "CRM" in requires:
+            llm_answer = self._dispatcher.dispatch_llm_combined(
+                question=message_text,
+                intent=decision.intent,
+                rag_context=rag_context,
+                crm_data=crm_data
+            )
+        elif "RAG" in requires:
+            llm_answer = self._dispatcher.dispatch_llm_rag(
+                question=message_text,
+                context=rag_context
+            )
+        elif "CRM" in requires:
+            llm_answer = self._dispatcher.dispatch_llm_crm(
+                intent=decision.intent,
+                crm_data=crm_data
+            )
+        else:
+            # Fallback for greetings, goodbyes, or direct answers that require no backend data
+            llm_answer = self._dispatcher.dispatch_greeting(message_text)
+
+        self._logger.info(f"Workflow execution complete for '{decision.intent}'")
+
+        return {
+            "llm_answer": llm_answer,
+            "rag_result": rag_result,
+            "crm_result": crm_result
         }
 
-        # Direct responses (greeting/goodbye)
-        if not decision.requires:
-            results["llm_answer"] = self._dispatcher.dispatch_greeting(user_message)
-            return results
-
-        # Execute required services
-        if decision.needs_rag:
-            results["rag_result"] = self._dispatcher.dispatch_rag(
-                decision.parameters.get("query", user_message),
-            )
-
-        if decision.needs_crm:
-            from application.agent.task_planner import TaskPlanner
-            planner = TaskPlanner()
-            crm_op = planner._map_intent_to_crm_operation(decision.intent)
-            results["crm_result"] = self._dispatcher.dispatch_crm(
-                crm_op, decision.parameters,
-            )
-
-        # Generate LLM response based on what we collected
-        results["llm_answer"] = self._generate_llm_answer(
-            decision, user_message, results,
-        )
-
-        return results
-
-    def _generate_llm_answer(self, decision: AgentDecision,
-                              user_message: str,
-                              results: Dict[str, Any]) -> str:
-        """Generate LLM answer based on collected service results."""
-        rag_result: Optional[ServiceResult] = results.get("rag_result")
-        crm_result: Optional[ServiceResult] = results.get("crm_result")
-
-        rag_context = ""
-        if rag_result and rag_result.success and rag_result.data:
-            rag_context = rag_result.data.get("context", "")
-
-        crm_data = {}
-        if crm_result and crm_result.success and crm_result.data:
-            crm_data = crm_result.data
-
-        try:
-            # Both RAG and CRM
-            if rag_context and crm_data:
-                return self._dispatcher.dispatch_llm_combined(
-                    user_message, decision.intent, rag_context, crm_data,
-                )
-            # RAG only
-            elif rag_context:
-                return self._dispatcher.dispatch_llm_rag(user_message, rag_context)
-            # CRM only
-            elif crm_data:
-                return self._dispatcher.dispatch_llm_crm(decision.intent, crm_data)
-            else:
-                return "عذراً، لم أتمكن من العثور على المعلومات المطلوبة."
-        except Exception as e:
-            self._logger.error(f"LLM generation failed: {e}")
-            return "عذراً، حدث خطأ في معالجة طلبك."
+    def _map_intent_to_crm_operation(self, intent: str) -> str:
+        """Map the agent intent to a specific CRM operation."""
+        # This acts as the bridge between user intent and actual backend CRM endpoints
+        mapping = {
+            "check_balance": "get_balance",
+            "check_package": "get_packages",
+            "open_ticket": "create_ticket",
+            "check_ticket": "get_tickets",
+            "billing": "get_billing",
+            "contacts": "get_tickets",
+            "wireless_packages": "get_packages",
+            "customer_info": "get_customer_info",
+        }
+        # Fallback to get_customer_info if the intent isn't explicitly mapped
+        return mapping.get(intent, "get_customer_info")

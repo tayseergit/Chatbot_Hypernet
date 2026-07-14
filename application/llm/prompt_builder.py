@@ -13,8 +13,8 @@ class PromptBuilder:
 اعتمد فقط على المعلومات الموجودة في السياق.
 لا تشترط أن تكون كلمات السؤال مطابقة تماماً لكلمات السياق.
 إذا كان المعنى موجوداً في السياق، أجب بناءً عليه.
-إذا لم تجد أي معلومة مرتبطة بالسؤال داخل السياق، قل فقط:
-لا توجد معلومات كافية في قاعدة المعرفة.
+إذا لم تجد معلومات كافية أو كانت ثقتك بالإجابة منخفضة، قل فقط:
+  يرجى المتابعة مع الدعم الفني عبر واتساب: https://wa.me/967770000000
 
 السياق:
 {context}
@@ -73,6 +73,3 @@ class PromptBuilder:
     def build_greeting_prompt(self, message: str) -> str:
         return self.GREETING_TEMPLATE.format(message=message)
 
-    def build_intent_prompt(self, message: str, intents: str) -> str:
-        return (f"Classify into one intent: {intents}\n"
-                f"Message: \"{message}\"\nRespond with ONLY the intent name.")

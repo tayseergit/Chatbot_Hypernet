@@ -5,10 +5,12 @@ Uses python-telegram-bot library for Telegram Bot API integration.
 Routes all messages through ChatbotFacade.
 """
 
+from application.shared.configuration.app_config import SUPPORT_FALLBACK_MESSAGE
 import logging
 from typing import Optional
 
 from application.monitoring.logger import AppLogger
+from application.shared.configuration.app_config import SUPPORT_FALLBACK_MESSAGE
 
 
 class TelegramBot:
@@ -114,6 +116,4 @@ class TelegramBot:
 
         except Exception as e:
             self._logger.error(f"Error handling Telegram message: {e}")
-            await update.message.reply_text(
-                "عذراً، حدث خطأ. يرجى المحاولة مرة أخرى."
-            )
+            await update.message.reply_text(SUPPORT_FALLBACK_MESSAGE)

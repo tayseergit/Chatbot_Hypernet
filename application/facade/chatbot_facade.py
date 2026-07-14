@@ -8,7 +8,7 @@ Key design: Agent decides WHAT, Facade decides HOW.
 import time
 from typing import Optional
 
-from application.shared.configuration.app_config import AppConfig
+from application.shared.configuration.app_config import AppConfig, SUPPORT_FALLBACK_MESSAGE
 from application.shared.dto.chat_message import ChatMessage
 from application.shared.dto.chat_response import ChatResponse
 from application.session_management.session_service import SessionService
@@ -189,7 +189,7 @@ class ChatbotFacade:
             self._logger.exception(f"Error handling message: {e}")
             return ChatResponse.error_response(
                 user_id,
-                "عذراً، حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.",
+                SUPPORT_FALLBACK_MESSAGE,
             )
 
     def get_analytics(self):

@@ -28,13 +28,7 @@ class Application:
         self._facade: ChatbotFacade = None
 
     def start(self, knowledge_file: str = None, mode: str = "console") -> None:
-        """
-        Start the application.
-
-        Args:
-            knowledge_file: Path to XLS knowledge base file.
-            mode: 'console' for interactive testing, 'telegram' for bot.
-        """
+         
         self._logger.info("Starting AI ISP Chatbot Platform...")
 
         # Initialize facade

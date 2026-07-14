@@ -5,6 +5,9 @@ from typing import Optional
 from application.monitoring.logger import AppLogger
 
 
+from application.shared.configuration.app_config import SUPPORT_FALLBACK_MESSAGE
+
+
 class OutputParser:
     """Parses, cleans, and validates LLM outputs."""
 
@@ -14,7 +17,7 @@ class OutputParser:
     def parse_response(self, raw: str) -> str:
         """Clean and format a raw LLM response."""
         if not raw:
-            return "عذراً، لم أتمكن من إنشاء إجابة."
+            return SUPPORT_FALLBACK_MESSAGE
 
         # Remove common artifacts
         cleaned = raw.strip()

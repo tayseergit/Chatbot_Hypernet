@@ -2,6 +2,7 @@
 
 from typing import Any, Dict, Optional
 from application.llm.ollama_provider import OllamaProvider
+from application.llm.gemini_provider import GeminiProvider
 from application.monitoring.logger import AppLogger
 from application.shared.configuration.app_config import LLMConfig
 
@@ -11,8 +12,13 @@ class InferenceEngine:
 
     def __init__(self, config: LLMConfig):
         self._config = config
-        self._provider = OllamaProvider(config)
         self._logger = AppLogger.get_logger("inference_engine")
+        if config.provider.lower() == "gemini":
+            self._provider = GeminiProvider(config)
+            self._logger.info("Selected LLM provider: Gemini")
+        else:
+            self._provider = OllamaProvider(config)
+            self._logger.info("Selected LLM provider: Ollama")
 
     def infer(self, prompt: str, options: Dict[str, Any] = None) -> str:
         """Run inference on a prompt and return raw LLM output."""

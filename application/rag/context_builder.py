@@ -7,7 +7,7 @@ from application.monitoring.logger import AppLogger
 class ContextBuilder:
     """Assembles retrieved and reranked documents into a context string for the LLM."""
 
-    def __init__(self, max_context_length: int = 800):
+    def __init__(self, max_context_length: int = 1500):
         self._max_length = max_context_length
         self._logger = AppLogger.get_logger("context_builder")
 

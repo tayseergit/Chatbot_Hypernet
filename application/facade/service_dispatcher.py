@@ -32,6 +32,7 @@ class ServiceDispatcher:
     def dispatch_llm_rag(self, question: str, context: str) -> str:
         """Dispatch LLM generation with RAG context."""
         return self._llm.generate_rag_answer(question, context)
+        # return context
 
     @log_operation()
     def dispatch_llm_crm(self, intent: str, crm_data: Dict) -> str:

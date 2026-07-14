@@ -1,13 +1,16 @@
 """Formatter — formats responses for Telegram output."""
 
 
+from application.shared.configuration.app_config import SUPPORT_FALLBACK_MESSAGE
+
+
 class ResponseFormatter:
     """Formats responses for Telegram, handling Arabic RTL and markdown."""
 
     def format_for_telegram(self, text: str) -> str:
         """Format text for Telegram delivery."""
         if not text:
-            return "عذراً، حدث خطأ في معالجة طلبك."
+            return SUPPORT_FALLBACK_MESSAGE
 
         # Clean up
         formatted = text.strip()
@@ -20,7 +23,7 @@ class ResponseFormatter:
 
     def format_error(self, error_msg: str) -> str:
         """Format an error message for the user."""
-        return f"⚠️ عذراً، {error_msg}\nيرجى المحاولة مرة أخرى أو التواصل مع الدعم الفني."
+        return SUPPORT_FALLBACK_MESSAGE
 
     def format_greeting(self) -> str:
         """Default greeting when LLM is unavailable."""
