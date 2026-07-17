@@ -79,7 +79,7 @@ class MCPClient:
 
         # Build endpoint with parameter substitution
         endpoint = tool["endpoint"]
-        customer_id = params.get("customer_id", "C001")
+        customer_id = params.get("customer_id", "C002")
         endpoint = endpoint.replace("{customer_id}", customer_id)
 
         try:

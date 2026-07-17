@@ -123,7 +123,7 @@ class ChatbotFacade:
             t1 = time.time()
             context = {
                 "session_id": session.session_id,
-                "customer_id": session.customer_id or "C001",
+                "customer_id": session.customer_id or "C002",
                 "history": session.get_history_text(3),
             }
             decision = self._agent.analyze(message_text, context)

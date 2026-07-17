@@ -36,7 +36,7 @@ class LLMConfig:
     # provider: str = "ollama"  
     use_for_intent: bool = True
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-3.5-flash"
+    gemini_model: str = "gemini-3.1-flash-lite"
     ollama_url: str = "http://localhost:11434/api/generate"
     ollama_model: str = "dagbs/qwen2.5-coder-7b-instruct-abliterated:latest"
     temperature: float = 0.1

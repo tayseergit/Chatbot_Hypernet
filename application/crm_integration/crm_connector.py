@@ -59,12 +59,12 @@ class CRMConnector:
         self._logger.info(f"[MOCK] GET {endpoint} params={params}")
 
         if "balance" in endpoint:
-            return {"customer_id": params.get("customer_id", "C001"),
+            return {"customer_id": params.get("customer_id", "C002"),
                     "balance": 125000, "currency": "IQD",
                     "last_payment": "2026-06-20", "status": "active"}
 
         if "customer" in endpoint:
-            return {"customer_id": params.get("customer_id", "C001"),
+            return {"customer_id": params.get("customer_id", "C002"),
                     "name": "أحمد محمد", "phone": "+9647701234567",
                     "email": "ahmed@example.com", "plan": "Gold 50Mbps",
                     "status": "active", "address": "بغداد - الكرادة"}
