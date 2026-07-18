@@ -7,10 +7,11 @@ from application.monitoring.logger import AppLogger
 class WorkflowCoordinator:
     """Coordinates execution of services based on AgentDecision."""
 
-    def __init__(self, rag_service, crm_service, llm_service):
+    def __init__(self, rag_service, crm_service, llm_service, middleware=None):
         self._rag = rag_service
         self._crm = crm_service
         self._llm = llm_service
+        self._middleware = middleware
         self._logger = AppLogger.get_logger("workflow_coordinator")
 
     def execute_workflow(self, decision: AgentDecision, message_text: str) -> Dict[str, Any]:
@@ -35,12 +36,22 @@ class WorkflowCoordinator:
             else:
                 rag_context = str(rag_data)
 
-        # 2. Execute CRM if required
+        # 2. Execute CRM if required via BackendMiddlewareClient
         if "CRM" in requires:
-            operation = self._map_intent_to_crm_operation(decision.intent)
-            crm_result = self._crm.execute(operation, decision.parameters)
-            # If CRM fails, we want to inform the LLM so it can tell the user gracefully
-            crm_data = crm_result.data if crm_result.success else {"error": crm_result.error}
+            tool_name = self._map_intent_to_backend_tool(decision.intent)
+            if self._middleware:
+                try:
+                    tool_res = self._middleware.execute_tool(tool_name, decision.parameters)
+                    crm_data = tool_res.get("data", {}) if isinstance(tool_res, dict) else tool_res
+                    crm_result = type("CRMResult", (), {"success": True, "data": crm_data})()
+                except Exception as e:
+                    self._logger.error(f"Middleware CRM execution failed for {tool_name}: {e}")
+                    crm_data = {"error": str(e)}
+                    crm_result = type("CRMResult", (), {"success": False, "error": str(e)})()
+            else:
+                operation = self._map_intent_to_crm_operation(decision.intent)
+                crm_result = self._crm.execute(operation, decision.parameters)
+                crm_data = crm_result.data if crm_result.success else {"error": crm_result.error}
 
         # 3. Dispatch to the appropriate LLM Prompt Pipeline
         if "RAG" in requires and "CRM" in requires:
@@ -61,7 +72,6 @@ class WorkflowCoordinator:
                 crm_data=crm_data
             )
         else:
-            # Fallback for greetings, goodbyes, or direct answers that require no backend data
             llm_answer = self._llm.generate_greeting(message_text)
 
         self._logger.info(f"Workflow execution complete for '{decision.intent}'")
@@ -72,9 +82,22 @@ class WorkflowCoordinator:
             "crm_result": crm_result
         }
 
+    def _map_intent_to_backend_tool(self, intent: str) -> str:
+        """Map the agent intent directly to a backend_service Tool name."""
+        mapping = {
+            "check_balance": "get_balance",
+            "check_package": "get_current_package",
+            "open_ticket": "get_customer_info",
+            "check_ticket": "get_customer_info",
+            "billing": "get_invoices",
+            "contacts": "get_customer_info",
+            "wireless_packages": "get_available_packages",
+            "customer_info": "get_customer_info",
+        }
+        return mapping.get(intent, "get_customer_info")
+
     def _map_intent_to_crm_operation(self, intent: str) -> str:
         """Map the agent intent to a specific CRM operation."""
-        # This acts as the bridge between user intent and actual backend CRM endpoints
         mapping = {
             "check_balance": "get_balance",
             "check_package": "get_packages",
@@ -85,5 +108,4 @@ class WorkflowCoordinator:
             "wireless_packages": "get_packages",
             "customer_info": "get_customer_info",
         }
-        # Fallback to get_customer_info if the intent isn't explicitly mapped
         return mapping.get(intent, "get_customer_info")
