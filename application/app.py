@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from application.shared.configuration.app_config import AppConfig
 from application.facade.chatbot_facade import ChatbotFacade
 from application.monitoring.logger import AppLogger
+from backend_service.main import init_backend
 
 
 class Application:
@@ -25,14 +26,19 @@ class Application:
         self._logger = AppLogger.get_logger(
             "app", level=self._config.monitoring.log_level, use_json=False,
         )
+        self._backend = None
         self._facade: ChatbotFacade = None
 
     def start(self, knowledge_file: str = None, mode: str = "telegram") -> None:
          
         self._logger.info("Starting AI ISP Chatbot Platform...")
 
+        # Initialize Backend Tier
+        self._logger.info("Initializing Backend Foundation...")
+        self._backend = init_backend(create_schema=True)
+
         # Initialize facade
-        self._facade = ChatbotFacade(self._config)
+        self._facade = ChatbotFacade(self._config, self._backend)
         self._facade.initialize(knowledge_file)
 
         if mode == "telegram":
@@ -89,7 +95,7 @@ class Application:
             print("ERROR: Set TELEGRAM_BOT_TOKEN environment variable.")
             return
 
-        from application.presentation.telegram_bot import TelegramBot
+        from presentation.telegram_bot import TelegramBot
         bot = TelegramBot(token, self._facade)
         bot.start()
 

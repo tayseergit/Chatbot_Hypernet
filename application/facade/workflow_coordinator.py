@@ -7,11 +7,10 @@ from application.monitoring.logger import AppLogger
 class WorkflowCoordinator:
     """Coordinates execution of services based on AgentDecision."""
 
-    def __init__(self, rag_service, crm_service, llm_service, middleware=None):
+    def __init__(self, rag_service, tool_executor, llm_service):
         self._rag = rag_service
-        self._crm = crm_service
+        self._tool_executor = tool_executor
         self._llm = llm_service
-        self._middleware = middleware
         self._logger = AppLogger.get_logger("workflow_coordinator")
 
     def execute_workflow(self, decision: AgentDecision, message_text: str) -> Dict[str, Any]:
@@ -36,22 +35,18 @@ class WorkflowCoordinator:
             else:
                 rag_context = str(rag_data)
 
-        # 2. Execute CRM if required via BackendMiddlewareClient
+        # 2. Execute Backend Tool if required
         if "CRM" in requires:
             tool_name = self._map_intent_to_backend_tool(decision.intent)
-            if self._middleware:
-                try:
-                    tool_res = self._middleware.execute_tool(tool_name, decision.parameters)
-                    crm_data = tool_res.get("data", {}) if isinstance(tool_res, dict) else tool_res
-                    crm_result = type("CRMResult", (), {"success": True, "data": crm_data})()
-                except Exception as e:
-                    self._logger.error(f"Middleware CRM execution failed for {tool_name}: {e}")
-                    crm_data = {"error": str(e)}
-                    crm_result = type("CRMResult", (), {"success": False, "error": str(e)})()
-            else:
-                operation = self._map_intent_to_crm_operation(decision.intent)
-                crm_result = self._crm.execute(operation, decision.parameters)
-                crm_data = crm_result.data if crm_result.success else {"error": crm_result.error}
+            try:
+                # Use ToolExecutor directly
+                tool_res = self._tool_executor.execute(tool_name, decision.parameters)
+                crm_data = tool_res.get("data", {}) if isinstance(tool_res, dict) else tool_res
+                crm_result = type("CRMResult", (), {"success": True, "data": crm_data})()
+            except Exception as e:
+                self._logger.error(f"Backend tool execution failed for {tool_name}: {e}")
+                crm_data = {"error": str(e)}
+                crm_result = type("CRMResult", (), {"success": False, "error": str(e)})()
 
         # 3. Dispatch to the appropriate LLM Prompt Pipeline
         if "RAG" in requires and "CRM" in requires:

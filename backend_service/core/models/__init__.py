@@ -1,17 +1,8 @@
-"""SQLAlchemy ORM models for the Backend Tier."""
+"""
+Models initialization.
+"""
+from backend_service.core.models.session import Session
+from backend_service.core.models.message import Message
 
-from .customer import Customer
-from .session import Session
-from .context import ConversationContext
-from .message import Message
-from .tool_log import ToolLog
-from .audit_log import AuditLog
-
-__all__ = [
-    "Customer",
-    "Session",
-    "ConversationContext",
-    "Message",
-    "ToolLog",
-    "AuditLog",
-]
+# Expose models for Base.metadata.create_all
+__all__ = ["Session", "Message"]

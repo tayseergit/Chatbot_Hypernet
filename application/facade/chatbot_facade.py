@@ -11,10 +11,10 @@ from typing import Optional
 from application.shared.configuration.app_config import AppConfig, SUPPORT_FALLBACK_MESSAGE
 from application.shared.dto.chat_message import ChatMessage
 from application.shared.dto.chat_response import ChatResponse
-from application.session_management.session_service import SessionService
+from application.shared.dto.chat_response import ChatResponse
 from application.agent.agent_service import AgentService
 from application.rag.rag_service import RAGService
-from application.crm_integration.crm_service import CRMService
+from backend_service.container import BackendContainer
 from application.llm.llm_service import LLMService
 from application.response_generation.response_service import ResponseService
 from application.analytics.analytics_service import AnalyticsService
@@ -33,31 +33,32 @@ class ChatbotFacade:
     THE main entry point for the chatbot application tier.
 
     Full flow:
-    1. Session management (get/create session)
+    1. Session management (get/create session via Backend)
     2. Agent analysis (classify intent, decide services)
-    3. Service dispatch (CRM, RAG via WorkflowCoordinator)
+    3. Service dispatch (Backend ToolExecutor, RAG via WorkflowCoordinator)
     4. LLM response generation
     5. Response formatting
     6. Analytics recording
     """
 
-    def __init__(self, config: AppConfig):
+    def __init__(self, config: AppConfig, backend: BackendContainer):
         self._config = config
         self._logger = AppLogger.get_logger("facade")
         self._trace_manager = get_trace_manager()
 
-        # Initialize all services
-        self._session_service = SessionService(config.session, config.database)
+        # Connect Backend Tier
+        self._backend = backend
+
+        # Initialize Application services
         self._agent = AgentService()
         self._rag_service = RAGService(config.rag)
-        self._crm_service = CRMService(config.crm)
         self._llm_service = LLMService(config.llm)
         self._response_service = ResponseService()
         self._analytics = AnalyticsService()
 
-        # Wire up coordinator
+        # Wire up coordinator with ToolExecutor instead of CRMService
         self._coordinator = WorkflowCoordinator(
-            self._rag_service, self._crm_service, self._llm_service,
+            self._rag_service, self._backend.tool_executor, self._llm_service,
         )
 
         # Wire agent with LLM for advanced classification
@@ -110,21 +111,50 @@ class ChatbotFacade:
             )
 
         try:
-            # 1. Session management
+            # 1. Session management via Backend
             t0 = time.time()
-            session = self._session_service.get_or_create_session(user_id)
-            session.add_message("user", message_text)
+            session = self._backend.session_service.get_or_create_session(user_id)
+            self._backend.message_service.save_messages(session.session_id, "user", message_text)
             t_session = (time.time() - t0) * 1000
             self._logger.info(
                 f"Session: {session.session_id} | User: {user_id} | Time: {t_session:.2f}ms"
             )
 
+            # Check if this is an authentication attempt
+            context_data = self._backend.context_service.load_context(session.session_id)
+            is_pending_auth = "auth" in context_data.get("pending_action", "")
+
+            if not session.authed and is_pending_auth:
+                import re
+                # Iraqi phone format or general 10-15 digit format
+                phone_match = re.search(r'(\+964|0)?7\d{9}\b', message_text) or re.search(r'\+?\d{10,15}\b', message_text)
+                
+                if not phone_match:
+                    err_msg = 'يرجى ادخال رقم الاشتراك'
+                    self._backend.message_service.save_messages(session.session_id, "bot", err_msg)
+                    return ChatResponse(session_id=session.session_id, text=err_msg, intent="request_phone_auth", sources_used=["security"])
+                    
+                phone = phone_match.group(0)
+                try:
+                    session = self._backend.authentication_service.authenticate_customer(phone, session_id=session.session_id)
+                    self._backend.context_service.delete_context(session.session_id, "pending_action")
+                    auth_msg = "تم التحقق من حسابك بنجاح! كيف يمكنني مساعدتك ؟"
+                    self._backend.message_service.save_messages(session.session_id, "bot", auth_msg)
+                    return ChatResponse(session_id=session.session_id, text=auth_msg, intent="authentication_success", sources_used=["crm"])
+                except Exception as e:
+                    err_msg = "عذراً، لم أتمكن من التحقق من رقم الهاتف. يرجى التأكد من الرقم وإعادة المحاولة."
+                    self._backend.message_service.save_messages(session.session_id, "bot", err_msg)
+                    return ChatResponse(session_id=session.session_id, text=err_msg, intent="authentication_failure", sources_used=["crm"])
+
             # 2. Agent analysis — decides WHAT is needed
             t1 = time.time()
+            history_objs = self._backend.message_service.load_history(session.session_id, limit=3)
+            # In our mock, history_objs is empty string list, let's just make it a simple string for now.
+            history_text = "\n".join([str(m) for m in history_objs])
             context = {
                 "session_id": session.session_id,
-                "customer_id": session.customer_id or "C002",
-                "history": session.get_history_text(3),
+                "customer_id": session.customer_id or "unknown",
+                "history": history_text,
             }
             decision = self._agent.analyze(message_text, context)
 
@@ -133,13 +163,24 @@ class ChatbotFacade:
                 session_id=session.session_id, decision=decision,
             ))
 
-            # Update session intent
-            session.update_intent(decision.intent)
             t_agent = (time.time() - t1) * 1000
             self._logger.info(f"Step 2 - Agent Analysis Time: {t_agent:.2f}ms")
 
+            # Lazy Authentication Check
+            requires = decision.requires
+            if "CRM" in requires and not session.authed:
+                self._backend.context_service.save_context(session.session_id, "pending_action", "auth")
+                auth_req_msg = "يرجى تزويدنا برقم هاتفك المسجل لدينا."
+                self._backend.message_service.save_messages(session.session_id, "bot", auth_req_msg)
+                return ChatResponse(session_id=session.session_id, text=auth_req_msg, intent="request_phone_auth", sources_used=["security"])
+
             # 3. Facade executes — decides HOW
             t2 = time.time()
+            
+            # Make sure we pass session.customer_id to CRM tools
+            if session.customer_id and "CRM" in requires:
+                decision.parameters["crm_customer_id"] = session.customer_id
+                
             workflow_results = self._coordinator.execute_workflow(
                 decision, message_text,
             )
@@ -159,10 +200,7 @@ class ChatbotFacade:
             self._logger.info(f"Step 4 - Response Building Time: {t_response:.2f}ms")
 
             # 5. Update session with assistant response
-            session.add_assistant_message(
-                response.text, intent=decision.intent,
-                sources=response.sources_used,
-            )
+            self._backend.message_service.save_messages(session.session_id, "bot", response.text)
 
             # 6. Record analytics
             latency = (time.time() - start_time) * 1000
