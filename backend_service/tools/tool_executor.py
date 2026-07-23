@@ -20,7 +20,7 @@ class ToolExecutor:
                 response = requests.get(f"{CRM_BASE_URL}/customers/{customer_id}/balance", timeout=5)
                 return {"success": response.status_code == 200, "data": response.json()}
                 
-            elif tool_name == "get_current_package":
+            elif tool_name in ("get_current_package", "get_customer_info"):
                 if not customer_id:
                     return {"success": False, "error": "Customer ID required"}
                 response = requests.get(f"{CRM_BASE_URL}/customers/{customer_id}", timeout=5)

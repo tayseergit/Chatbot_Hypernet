@@ -26,6 +26,8 @@ from application.monitoring.logger import AppLogger
 from application.aspects.logging_aspect import log_operation
 from application.aspects.metrics_aspect import track_metrics
 from application.aspects.tracing_aspect import trace_operation, get_trace_manager
+from application.middlewares.middleware_pipeline import MiddlewarePipeline
+from application.middlewares.auth_middleware import AuthMiddleware
 
 
 class ChatbotFacade:
@@ -66,6 +68,10 @@ class ChatbotFacade:
 
         # Message bus
         self._bus = MessageBroker()
+
+        # Initialize Middleware Pipeline
+        self._pipeline = MiddlewarePipeline()
+        self._pipeline.register(AuthMiddleware(self._backend))
 
         self._initialized = False
 
@@ -120,31 +126,10 @@ class ChatbotFacade:
                 f"Session: {session.session_id} | User: {user_id} | Time: {t_session:.2f}ms"
             )
 
-            # Check if this is an authentication attempt
-            context_data = self._backend.context_service.load_context(session.session_id)
-            is_pending_auth = "auth" in context_data.get("pending_action", "")
-
-            if not session.authed and is_pending_auth:
-                import re
-                # Iraqi phone format or general 10-15 digit format
-                phone_match = re.search(r'(\+964|0)?7\d{9}\b', message_text) or re.search(r'\+?\d{10,15}\b', message_text)
-                
-                if not phone_match:
-                    err_msg = 'يرجى ادخال رقم الاشتراك'
-                    self._backend.message_service.save_messages(session.session_id, "bot", err_msg)
-                    return ChatResponse(session_id=session.session_id, text=err_msg, intent="request_phone_auth", sources_used=["security"])
-                    
-                phone = phone_match.group(0)
-                try:
-                    session = self._backend.authentication_service.authenticate_customer(phone, session_id=session.session_id)
-                    self._backend.context_service.delete_context(session.session_id, "pending_action")
-                    auth_msg = "تم التحقق من حسابك بنجاح! كيف يمكنني مساعدتك ؟"
-                    self._backend.message_service.save_messages(session.session_id, "bot", auth_msg)
-                    return ChatResponse(session_id=session.session_id, text=auth_msg, intent="authentication_success", sources_used=["crm"])
-                except Exception as e:
-                    err_msg = "عذراً، لم أتمكن من التحقق من رقم الهاتف. يرجى التأكد من الرقم وإعادة المحاولة."
-                    self._backend.message_service.save_messages(session.session_id, "bot", err_msg)
-                    return ChatResponse(session_id=session.session_id, text=err_msg, intent="authentication_failure", sources_used=["crm"])
+            # Check if this is an authentication attempt using middleware
+            pipeline_response = self._pipeline.execute_before_agent(session, message_text)
+            if pipeline_response:
+                return pipeline_response
 
             # 2. Agent analysis — decides WHAT is needed
             t1 = time.time()
@@ -166,19 +151,16 @@ class ChatbotFacade:
             t_agent = (time.time() - t1) * 1000
             self._logger.info(f"Step 2 - Agent Analysis Time: {t_agent:.2f}ms")
 
-            # Lazy Authentication Check
-            requires = decision.requires
-            if "CRM" in requires and not session.authed:
-                self._backend.context_service.save_context(session.session_id, "pending_action", "auth")
-                auth_req_msg = "يرجى تزويدنا برقم هاتفك المسجل لدينا."
-                self._backend.message_service.save_messages(session.session_id, "bot", auth_req_msg)
-                return ChatResponse(session_id=session.session_id, text=auth_req_msg, intent="request_phone_auth", sources_used=["security"])
+            # Lazy Authentication Check via middleware
+            pipeline_response = self._pipeline.execute_after_agent(session, message_text, decision)
+            if pipeline_response:
+                return pipeline_response
 
             # 3. Facade executes — decides HOW
             t2 = time.time()
             
             # Make sure we pass session.customer_id to CRM tools
-            if session.customer_id and "CRM" in requires:
+            if session.customer_id and "CRM" in decision.requires:
                 decision.parameters["crm_customer_id"] = session.customer_id
                 
             workflow_results = self._coordinator.execute_workflow(
