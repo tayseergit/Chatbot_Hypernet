@@ -164,7 +164,7 @@ class ChatbotFacade:
                 decision.parameters["crm_customer_id"] = session.customer_id
                 
             workflow_results = self._coordinator.execute_workflow(
-                decision, message_text,
+                decision, message_text, history=history_text
             )
             t_workflow = (time.time() - t2) * 1000
             self._logger.info(f"Step 3 - Workflow Execution Time: {t_workflow:.2f}ms")

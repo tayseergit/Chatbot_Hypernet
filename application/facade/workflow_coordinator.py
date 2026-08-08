@@ -13,7 +13,7 @@ class WorkflowCoordinator:
         self._llm = llm_service
         self._logger = AppLogger.get_logger("workflow_coordinator")
 
-    def execute_workflow(self, decision: AgentDecision, message_text: str) -> Dict[str, Any]:
+    def execute_workflow(self, decision: AgentDecision, message_text: str, history: str = "") -> Dict[str, Any]:
         """Execute required services and gather results to generate an LLM response."""
         requires = decision.requires
         self._logger.info(f"Executing workflow for intent '{decision.intent}', requiring: {requires}")
@@ -54,12 +54,14 @@ class WorkflowCoordinator:
                 question=message_text,
                 intent=decision.intent,
                 rag_context=rag_context,
-                crm_data=crm_data
+                crm_data=crm_data,
+                history=history
             )
         elif "RAG" in requires:
             llm_answer = self._llm.generate_rag_answer(
                 question=message_text,
-                context=rag_context
+                context=rag_context,
+                history=history
             )
         elif "CRM" in requires:
             llm_answer = self._llm.summarize_crm_data(

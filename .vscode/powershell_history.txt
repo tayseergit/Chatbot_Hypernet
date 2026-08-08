@@ -1,0 +1,6 @@
+python -m venv venv; .\venv\Scripts\pip install -r requirements.txt
+.\venv\Scripts\python download_models.py
+.\venv\Scripts\python application\app.py --mode console`
+
+.\venv\Scripts\python application\app.py --mode telegram`
+

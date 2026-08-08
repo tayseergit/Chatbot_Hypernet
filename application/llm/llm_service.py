@@ -40,10 +40,10 @@ class LLMService:
 
     @log_operation()
     @track_metrics("llm_rag_answer")
-    def generate_rag_answer(self, question: str, context: str) -> str:
+    def generate_rag_answer(self, question: str, context: str, history: str = "") -> str:
         """Generate an answer using RAG context."""
         self._logger.info(f"Context Length: {len(context)} chars")
-        prompt = self._prompt_builder.build_rag_prompt(question, context)
+        prompt = self._prompt_builder.build_rag_prompt(question, context, history)
         raw = self._engine.infer(prompt)
         return self._parser.parse_response(raw)
 
@@ -59,12 +59,12 @@ class LLMService:
     @log_operation()
     @track_metrics("llm_combined")
     def generate_combined_response(self, question: str, intent: str,
-                                    rag_context: str, crm_data: Dict) -> str:
+                                    rag_context: str, crm_data: Dict, history: str = "") -> str:
         """Generate response using both RAG and CRM data."""
         self._logger.info(f"Context Length: {len(rag_context)} chars")
         data_str = json.dumps(crm_data, ensure_ascii=False, indent=2)
         prompt = self._prompt_builder.build_combined_prompt(
-            question, intent, rag_context, data_str,
+            question, intent, rag_context, data_str, history
         )
         raw = self._engine.infer(prompt)
         return self._parser.parse_response(raw)

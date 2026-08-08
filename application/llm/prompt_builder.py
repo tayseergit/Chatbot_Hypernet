@@ -9,12 +9,12 @@ class PromptBuilder:
     # Arabic ISP customer service prompt
     RAG_ANSWER_TEMPLATE = """أنت مساعد ذكي لشركة إنترنت هايبرنت ومركز خدمة عملاء.
 
-أجب باللغة العربية فقط. اجعل إجابتك قصيرة ومباشرة.
-اعتمد فقط على المعلومات الموجودة في السياق.
-لا تشترط أن تكون كلمات السؤال مطابقة تماماً لكلمات السياق.
-إذا كان المعنى موجوداً في السياق، أجب بناءً عليه.
-إذا لم تجد معلومات كافية أو كانت ثقتك بالإجابة منخفضة، قل فقط:
-  يرجى المتابعة مع الدعم الفني عبر واتساب: https://wa.me/967770000000
+أجب باللغة العربية فقط. قدم إجابة مفصلة وواضحة بناءً على سؤال العميل وتاريخ المحادثة.
+استخدم المعلومات الموجودة في السياق للإجابة على الأسئلة المتعلقة بأسعار وخدمات الشركة.
+يمكنك استخدام معلوماتك العامة لشرح المفاهيم التقنية (مثل ما هو الـ Static IP أو ما فائدته) بشكل مبسط ومفيد للعميل.
+
+تاريخ المحادثة:
+{history}
 
 السياق:
 {context}
@@ -35,9 +35,12 @@ class PromptBuilder:
 الرد المناسب للعميل:"""
 
     COMBINED_TEMPLATE = """أنت مساعد ذكي لشركة إنترنت.
-أجب باللغة العربية فقط. اجعل إجابتك قصيرة ومباشرة.
+أجب باللغة العربية فقط. قدم إجابة مفصلة وواضحة بناءً على سؤال العميل وتاريخ المحادثة.
 
 نوع الطلب: {intent}
+
+تاريخ المحادثة:
+{history}
 
 معلومات من قاعدة المعرفة:
 {rag_context}
@@ -57,17 +60,17 @@ class PromptBuilder:
 
 الرد:"""
 
-    def build_rag_prompt(self, question: str, context: str) -> str:
-        return self.RAG_ANSWER_TEMPLATE.format(context=context, question=question)
+    def build_rag_prompt(self, question: str, context: str, history: str = "") -> str:
+        return self.RAG_ANSWER_TEMPLATE.format(context=context, question=question, history=history)
 
     def build_crm_prompt(self, intent: str, crm_data: str) -> str:
         return self.CRM_SUMMARY_TEMPLATE.format(intent=intent, crm_data=crm_data)
 
     def build_combined_prompt(self, question: str, intent: str,
-                              rag_context: str, crm_data: str) -> str:
+                              rag_context: str, crm_data: str, history: str = "") -> str:
         return self.COMBINED_TEMPLATE.format(
             intent=intent, rag_context=rag_context,
-            crm_data=crm_data, question=question,
+            crm_data=crm_data, question=question, history=history
         )
 
     def build_greeting_prompt(self, message: str) -> str:

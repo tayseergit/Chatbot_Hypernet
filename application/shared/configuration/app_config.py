@@ -25,7 +25,7 @@ class RAGConfig:
     overlap: int = 50
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     collection_name: str = "isp_knowledge"
-    n_results: int = 2
+    n_results: int = 5
     distance_threshold: float = 25.0
 
 
