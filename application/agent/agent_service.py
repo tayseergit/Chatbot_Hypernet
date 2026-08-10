@@ -61,6 +61,10 @@ class AgentService:
         if "customer_id" in context:
             params["customer_id"] = context["customer_id"]
 
+        # Pass location if extracted by LLM
+        if "location" in context:
+            params["location"] = context["location"]
+
         # Pass the original query for RAG
         params["query"] = message
 

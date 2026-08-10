@@ -14,7 +14,7 @@ INTENT_SERVICE_MAP: Dict[str, List[str]] = {
     "billing": ["CRM"],
     "wireless_packages": ["CRM", "RAG"],
     "contacts": ["CRM"],
-    "dsl_troubleshooting": ["RAG"],
+    "dsl_troubleshooting": ["RAG", "CRM"],
 }
 
 ALLOWED_INTENTS = [

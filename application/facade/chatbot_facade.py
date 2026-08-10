@@ -214,6 +214,12 @@ class ChatbotFacade:
         """Get analytics summary."""
         return self._analytics.get_summary()
 
+    def logout_user(self, user_id: str) -> str:
+        """Logs out the user and starts a fresh session."""
+        self._backend.session_service.close_session(user_id)
+        self._logger.info(f"User {user_id} logged out. Session closed.")
+        return "تم تسجيل الخروج بنجاح. تم مسح بيانات الجلسة الحالية."
+
     def shutdown(self) -> None:
         """Cleanup and shutdown."""
         self._logger.info("Shutting down chatbot platform")

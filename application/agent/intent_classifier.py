@@ -47,10 +47,11 @@ class IntentClassifier:
                 "Analyze the user's message and select the exact intent and required backend services.\n"
                 f"ALLOWED INTENTS: [{intents_str}]\n"
                 "SERVICES RULES:\n"
-                "- Include \"RAG\" if the question requires looking up FAQ, troubleshooting, pricing, or general ISP knowledge.\n"
-                "- Include \"CRM\" if the question requires checking personal account balance, line status, packages, bills, or tickets.\n"
-                "- Include both [\"RAG\", \"CRM\"] if both knowledge and account lookups are needed.\n"
-                "- Return [] if no backend service is needed.\n\n"
+                "- Include \"RAG\" if the question is general and requires looking up FAQ, general troubleshooting steps, or public pricing.\n"
+                "- Include \"CRM\" ONLY if the question requires looking up the user's specific account (e.g. 'what is my balance', 'is my account active', 'what is my name', 'give me my router password / PPPoE settings', or specific complaints like 'my internet is disconnected' where checking their line status is necessary), OR if the user is asking about available packages or top-ups.\n"
+                "- Do NOT include \"CRM\" for general questions that apply to anyone (e.g. 'how do I configure a router in general', 'what are your ADSL prices'), EXCEPT for asking about available packages to top up.\n"
+                "- Include both [\"RAG\", \"CRM\"] if both general knowledge and personal account lookups are needed.\n"
+                "- Return [] if no backend service is needed (e.g., greetings).\n\n"
                 f"User Message: \"{message}\"\n\n"
                 "Respond ONLY with valid JSON in exactly this format:\n"
                 "{\"intent\": \"<intent_name>\", \"requires\": [\"RAG\"], \"reasoning\": \"<reason>\"}"
@@ -70,6 +71,7 @@ class IntentClassifier:
                     requires = ["RAG"]
                 reasoning = data.get("reasoning", f"LLM selected {intent}")
                 self._logger.info(f"LLM decision: intent={intent}, requires={requires}")
+                
                 return intent, requires, 0.85, reasoning
             except Exception as e:
                 self._logger.warning(f"LLM decision classification failed: {e}")

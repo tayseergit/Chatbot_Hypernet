@@ -50,6 +50,8 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("start", self._handle_start))
         self._app.add_handler(CommandHandler("help", self._handle_help))
         self._app.add_handler(CommandHandler("stats", self._handle_stats))
+        self._app.add_handler(CommandHandler("logout", self._handle_logout))
+        self._app.add_handler(CommandHandler("reset", self._handle_logout))
         self._app.add_handler(
             MessageHandler((filters.TEXT | filters.CONTACT) & ~filters.COMMAND, self._handle_message)
         )
@@ -91,6 +93,13 @@ class TelegramBot:
         text += f"إجمالي الاستفسارات: {stats.get('total_queries', 0)}\n"
         text += f"الجلسات النشطة: {stats.get('active_sessions', 0)}\n"
         await update.message.reply_text(text)
+
+    async def _handle_logout(self, update, context) -> None:
+        """Handle /logout or /reset command."""
+        user_id = str(update.effective_user.id)
+        response_msg = await asyncio.to_thread(self._facade.logout_user, user_id)
+        from telegram import ReplyKeyboardRemove
+        await update.message.reply_text(response_msg, reply_markup=ReplyKeyboardRemove())
 
     async def _handle_message(self, update, context) -> None:
         """Handle incoming text messages — main handler."""

@@ -4,8 +4,22 @@ Loads from environment variables with sensible defaults.
 """
 
 import os
+import json
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional
+
+# Base paths
+BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
+CONFIG_FILE_PATH = BASE_DIR / "config.json"
+
+def load_config():
+    if CONFIG_FILE_PATH.exists():
+        with open(CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+_config_data = load_config()
 
 try:
     from dotenv import load_dotenv
@@ -13,7 +27,15 @@ try:
 except ImportError:
     pass
 
-SUPPORT_FALLBACK_MESSAGE: str = "يرجى المتابعة مع الدعم الفني عبر واتساب: https://wa.me/967770000000"
+_whatsapp = _config_data.get("whatsapp_link", "https://wa.me/967770000000")
+_call_center = _config_data.get("call_center_number", "967770000000")
+SUPPORT_FALLBACK_MESSAGE = _config_data.get("messages", {}).get("fallback_error", "حدث خطأ. يرجى التواصل مع الدعم .").format(whatsapp_link=_whatsapp, call_center_number=_call_center)
+
+def get_message(key: str, **kwargs) -> str:
+    msg = _config_data.get("messages", {}).get(key, "")
+    kwargs.setdefault("whatsapp_link", _whatsapp)
+    kwargs.setdefault("call_center_number", _call_center)
+    return msg.format(**kwargs)
 
 
 @dataclass

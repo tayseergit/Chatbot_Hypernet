@@ -35,7 +35,7 @@ class Application:
 
         # Initialize Backend Tier
         self._logger.info("Initializing Backend Foundation...")
-        self._backend = init_backend(create_schema=True)
+        self._backend = init_backend(create_schema=False)
 
         # Initialize facade
         self._facade = ChatbotFacade(self._config, self._backend)

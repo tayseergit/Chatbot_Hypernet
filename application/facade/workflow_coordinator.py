@@ -65,8 +65,9 @@ class WorkflowCoordinator:
             )
         elif "CRM" in requires:
             llm_answer = self._llm.summarize_crm_data(
-                intent=decision.intent,
-                crm_data=crm_data
+                question=message_text,
+                crm_data=crm_data,
+                history=history
             )
         else:
             llm_answer = self._llm.generate_greeting(message_text)
@@ -86,9 +87,12 @@ class WorkflowCoordinator:
             "check_package": "get_current_package",
             "open_ticket": "get_customer_info",
             "check_ticket": "get_customer_info",
-            "billing": "get_invoices",
+            "billing": "get_customer_info",
             "contacts": "get_customer_info",
             "wireless_packages": "get_available_packages",
+            "adsl_packages": "get_available_packages",
+            "wireless_topup": "get_available_packages",
+            "bot_package_charging": "get_available_packages",
             "customer_info": "get_customer_info",
         }
         return mapping.get(intent, "get_customer_info")
@@ -103,6 +107,9 @@ class WorkflowCoordinator:
             "billing": "get_billing",
             "contacts": "get_tickets",
             "wireless_packages": "get_packages",
+            "adsl_packages": "get_packages",
+            "wireless_topup": "get_packages",
+            "bot_package_charging": "get_packages",
             "customer_info": "get_customer_info",
         }
         return mapping.get(intent, "get_customer_info")

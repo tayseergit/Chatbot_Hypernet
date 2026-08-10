@@ -17,6 +17,7 @@ from application.monitoring.logger import AppLogger
 from application.aspects.logging_aspect import log_operation
 from application.aspects.metrics_aspect import track_metrics
 from application.aspects.exception_aspect import handle_exceptions
+from backend_service.core.services.crm_log_service import CRMLogService
 
 
 class LLMService:
@@ -37,23 +38,37 @@ class LLMService:
         self._prompt_builder = PromptBuilder()
         self._engine = InferenceEngine(config)
         self._parser = OutputParser()
+        self._log_service = CRMLogService()
 
     @log_operation()
     @track_metrics("llm_rag_answer")
     def generate_rag_answer(self, question: str, context: str, history: str = "") -> str:
         """Generate an answer using RAG context."""
-        self._logger.info(f"Context Length: {len(context)} chars")
+        t0 = time.time()
         prompt = self._prompt_builder.build_rag_prompt(question, context, history)
         raw = self._engine.infer(prompt)
+        latency = (time.time() - t0) * 1000
+        self._log_service.log_request(
+            endpoint="LLM / RAG", method="LLM",
+            payload={"prompt": prompt, "context_len": len(context)},
+            response={"raw_answer": raw}, status_code=200, latency_ms=latency
+        )
         return self._parser.parse_response(raw)
 
     @log_operation()
     @track_metrics("llm_crm_summary")
-    def summarize_crm_data(self, intent: str, crm_data: Dict) -> str:
-        """Summarize CRM data into a user-friendly response."""
+    def summarize_crm_data(self, question: str, crm_data: Dict, history: str = "") -> str:
+        """Answer the user's question using CRM data."""
+        t0 = time.time()
         data_str = json.dumps(crm_data, ensure_ascii=False, indent=2)
-        prompt = self._prompt_builder.build_crm_prompt(intent, data_str)
+        prompt = self._prompt_builder.build_crm_prompt(question, data_str, history)
         raw = self._engine.infer(prompt)
+        latency = (time.time() - t0) * 1000
+        self._log_service.log_request(
+            endpoint="LLM / CRM Summary", method="LLM",
+            payload={"prompt": prompt},
+            response={"raw_answer": raw}, status_code=200, latency_ms=latency
+        )
         return self._parser.parse_response(raw)
 
     @log_operation()
@@ -61,12 +76,18 @@ class LLMService:
     def generate_combined_response(self, question: str, intent: str,
                                     rag_context: str, crm_data: Dict, history: str = "") -> str:
         """Generate response using both RAG and CRM data."""
-        self._logger.info(f"Context Length: {len(rag_context)} chars")
+        t0 = time.time()
         data_str = json.dumps(crm_data, ensure_ascii=False, indent=2)
         prompt = self._prompt_builder.build_combined_prompt(
             question, intent, rag_context, data_str, history
         )
         raw = self._engine.infer(prompt)
+        latency = (time.time() - t0) * 1000
+        self._log_service.log_request(
+            endpoint="LLM / Combined", method="LLM",
+            payload={"prompt": prompt, "context_len": len(rag_context)},
+            response={"raw_answer": raw}, status_code=200, latency_ms=latency
+        )
         return self._parser.parse_response(raw)
 
     @log_operation()

@@ -1,0 +1,35 @@
+import os
+import sys
+from flask import Flask, render_template, jsonify
+from dotenv import load_dotenv
+
+# Load env variables before importing database
+load_dotenv()
+
+# Add project root to path so we can import backend_service
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from backend_service.core.services.crm_log_service import CRMLogService
+from backend_service.core.database import Base, engine
+
+# Ensure tables are created
+Base.metadata.create_all(bind=engine)
+
+app = Flask(__name__)
+log_service = CRMLogService()
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/api/logs')
+def get_logs():
+    # Fetch latest 100 logs
+    logs = log_service.get_logs(limit=100)
+    return jsonify(logs)
+
+if __name__ == '__main__':
+    print("="*50)
+    print("Starting CRM Log Dashboard on http://localhost:5000")
+    print("="*50)
+    app.run(debug=True, port=5000)
