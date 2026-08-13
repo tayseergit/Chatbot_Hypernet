@@ -1,5 +1,38 @@
+# Python
 __pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
 venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Environment
 .env
+.env.*
+
+# IDE
 .vscode/
+.idea/
+
+# Media & Uploads
 media/
+
+# Databases (SQLite)
+*.sqlite
+*.sqlite3
+*.db
+
+# ML Models (large binary files)
+models/
+
+# Logs
+*.log
+bot_output.log
+
+# OS
+.DS_Store
+Thumbs.db

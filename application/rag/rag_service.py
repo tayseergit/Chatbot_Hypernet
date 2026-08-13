@@ -43,9 +43,9 @@ class RAGService:
         file_path = knowledge_file or self._config.knowledge_file
         self._logger.info(f"Initializing RAG from: {file_path}")
 
-        # Load embedding model
+        # Load embedding model on CPU to avoid CUDA OOM issues
         from sentence_transformers import SentenceTransformer
-        self._embedding_model = SentenceTransformer(self._config.embedding_model)
+        self._embedding_model = SentenceTransformer(self._config.embedding_model, device="cpu")
 
         # Read XLS file
         text = self._read_xls(file_path)

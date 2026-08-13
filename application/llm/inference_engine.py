@@ -3,6 +3,7 @@
 from typing import Any, Dict, Optional
 from application.llm.ollama_provider import OllamaProvider
 from application.llm.gemini_provider import GeminiProvider
+from application.llm.lmstudio_provider import LMStudioProvider
 from application.monitoring.logger import AppLogger
 from application.shared.configuration.app_config import LLMConfig
 
@@ -13,9 +14,13 @@ class InferenceEngine:
     def __init__(self, config: LLMConfig):
         self._config = config
         self._logger = AppLogger.get_logger("inference_engine")
-        if config.provider.lower() == "gemini":
+        prov = config.provider.lower()
+        if prov == "gemini":
             self._provider = GeminiProvider(config)
             self._logger.info("Selected LLM provider: Gemini")
+        elif prov in ["lmstudio", "lm_studio", "lm-studio"]:
+            self._provider = LMStudioProvider(config)
+            self._logger.info("Selected LLM provider: LM Studio")
         else:
             self._provider = OllamaProvider(config)
             self._logger.info("Selected LLM provider: Ollama")

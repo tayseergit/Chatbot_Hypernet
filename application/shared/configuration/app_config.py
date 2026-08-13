@@ -45,7 +45,7 @@ class RAGConfig:
     knowledge_file: str = "chatbot.xls"
     chunk_size: int = 350
     overlap: int = 50
-    embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    embedding_model: str = r"models/paraphrase-multilingual-MiniLM-L12-v2"
     collection_name: str = "isp_knowledge"
     n_results: int = 10
     distance_threshold: float = 25.0
@@ -54,13 +54,16 @@ class RAGConfig:
 @dataclass
 class LLMConfig:
 
-    provider: str = "gemini"  
+    provider: str = "lmstudio"  
+    # provider: str = "gemini"  
     # provider: str = "ollama"  
     use_for_intent: bool = True
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3.1-flash-lite"
     ollama_url: str = "http://localhost:11434/api/generate"
     ollama_model: str = "dagbs/qwen2.5-coder-7b-instruct-abliterated:latest"
+    lmstudio_url: str = "http://localhost:1234/v1/chat/completions"
+    lmstudio_model: str = "local-model"
     temperature: float = 0.1
     top_p: float = 0.8
     top_k: int = 5
@@ -172,6 +175,8 @@ class AppConfig:
         config.llm.gemini_model = os.getenv("GEMINI_MODEL", config.llm.gemini_model)
         config.llm.ollama_url = os.getenv("OLLAMA_URL", config.llm.ollama_url)
         config.llm.ollama_model = os.getenv("OLLAMA_MODEL", config.llm.ollama_model)
+        config.llm.lmstudio_url = os.getenv("LMSTUDIO_URL", config.llm.lmstudio_url)
+        config.llm.lmstudio_model = os.getenv("LMSTUDIO_MODEL", config.llm.lmstudio_model)
         config.llm.temperature = float(
             os.getenv("LLM_TEMPERATURE", config.llm.temperature)
         )
