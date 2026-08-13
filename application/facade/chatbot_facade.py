@@ -102,10 +102,10 @@ class ChatbotFacade:
 
     @log_operation()
     @track_metrics("handle_message")
-    @trace_operation("handle_message")
-    def handle_message(self, user_id: str, message_text: str) -> ChatResponse:
+    @trace_operation("facade.handle_message")
+    def handle_message(self, user_id: str, message_text: str, image_bytes: Optional[bytes] = None, image_path: Optional[str] = None) -> ChatResponse:
         """
-        Handle an incoming user message — the MAIN entry point.
+        Main entry point for an incoming chat message. — the MAIN entry point.
 
         Full pipeline: Session -> Agent -> Services -> LLM -> Response.
         """
@@ -120,7 +120,11 @@ class ChatbotFacade:
             # 1. Session management via Backend
             t0 = time.time()
             session = self._backend.session_service.get_or_create_session(user_id)
-            self._backend.message_service.save_messages(session.session_id, "user", message_text)
+            msg_to_save = message_text
+            if image_path:
+                import os
+                msg_to_save = f"{message_text} [Attached Image: {os.path.basename(image_path)}]"
+            self._backend.message_service.save_messages(session.session_id, "user", msg_to_save)
             t_session = (time.time() - t0) * 1000
             self._logger.info(
                 f"Session: {session.session_id} | User: {user_id} | Time: {t_session:.2f}ms"
@@ -163,7 +167,7 @@ class ChatbotFacade:
                 decision.parameters["crm_customer_id"] = session.customer_id
                 
             workflow_results = self._coordinator.execute_workflow(
-                decision, message_text, history=history_text
+                decision, message_text, history=history_text, image_bytes=image_bytes
             )
             t_workflow = (time.time() - t2) * 1000
             self._logger.info(f"Step 3 - Workflow Execution Time: {t_workflow:.2f}ms")
@@ -249,6 +253,19 @@ class ChatbotFacade:
                         return f"نتيجة العملية: {msg}"
                 else:
                     return "❌ عذراً، حدث خطأ أثناء محاولة تمديد الصلاحية."
+
+            if action_data == "req_extend_bill":
+                # Only reachable if directly triggered (our bot uses confirmation)
+                return self._process_extend_bill(session)
+                
+            if action_data == "req_disconnect_session":
+                if not session.customer_id:
+                    return "❌ لا يمكننا تنفيذ الطلب لعدم وجود بيانات الحساب."
+                res = self._backend.crm_client.disconnect_user(session.customer_id)
+                if res.get("success"):
+                    return "✅ تم إرسال أمر فصل الجلسة بنجاح! يرجى الانتظار قليلاً ليعاد تهيئة اتصالك بالإنترنت."
+                else:
+                    return "❌ عذراً، حدث خطأ أثناء محاولة فصل الجلسة. يرجى إعادة التشغيل يدوياً من مفتاح الراوتر."
                     
             elif action_data.startswith("activate_pkg_"):
                 pkg_id_str = action_data.replace("activate_pkg_", "")

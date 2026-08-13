@@ -246,3 +246,27 @@ class CRMClient:
             "use_user_balance": True
         }
         return self.post(url, payload)
+
+    def disconnect_user(self, customer_id: str) -> Dict[str, Any]:
+        """Disconnect a user's active session."""
+        url = f"{self._auth_manager._base_url}/users/{customer_id}/disconnect"
+        return self.post(url, {})
+
+    def get_user_sessions(self, customer_id: str, limit: int = 30) -> Dict[str, Any]:
+        """Fetch user sessions and filter out unnecessary fields."""
+        url = f"{self._auth_manager._base_url}/UserSession/{customer_id}?limit={limit}&page=1"
+        response = self.get(url)
+        if response.get("success") and "data" in response:
+            sessions = response.get("data", {}).get("data", [])
+            filtered_sessions = []
+            for session in sessions:
+                filtered_session = {
+                    "acctstarttime": session.get("acctstarttime"),
+                    "acctstoptime": session.get("acctstoptime"),
+                    "acctinputoctets": session.get("acctinputoctets"),
+                    "acctoutputoctets": session.get("acctoutputoctets"),
+                    "acctterminatecause": session.get("acctterminatecause")
+                }
+                filtered_sessions.append(filtered_session)
+            response["data"]["data"] = filtered_sessions
+        return response

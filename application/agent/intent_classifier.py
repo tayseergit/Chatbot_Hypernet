@@ -54,6 +54,8 @@ class IntentClassifier:
                 "- Do NOT include \"CRM\" for general questions that apply to anyone (e.g. 'how do I configure a router in general', 'what are your ADSL prices'), EXCEPT for asking about available packages to top up.\n"
                 "- Include both [\"RAG\", \"CRM\"] if both general knowledge and personal account lookups are needed.\n"
                 "- If the user asks to extend their subscription time, borrow days, or says their subscription is over ('اشتراكي خالص', 'تمديد', 'سلفة'), select 'extend_bill' intent.\n"
+                "- If the user complains about slow internet ('النت ضعيف', 'النت بطيء', 'ضعف بالنت'), select 'troubleshoot_slow_internet' intent.\n"
+                "- VERY IMPORTANT: If the conversation history shows the bot is currently in the middle of troubleshooting slow internet (e.g. asking the user to play a video, or resetting the session), and the user is responding to that (e.g. 'done', 'it didn't work', 'now'), you MUST keep the intent as 'troubleshoot_slow_internet'.\n"
                 "- If the user is answering a question about speed (e.g. providing a number like '2' or '4'), the intent MUST be 'dsl_speed_change', NOT package charging.\n"
                 "- Return [] if no backend service is needed (e.g., greetings).\n\n"
                 f"Conversation History:\n{history_text}\n\n"

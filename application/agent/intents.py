@@ -8,7 +8,8 @@ INTENT_KEYWORDS: Dict[str, List[str]] = {
     "extend_bill": ["تمديد", "دين", "أيام إضافية", "يومين", "سلفة", "استلاف"],
     "wireless_packages": ["باقة", "باقتي", "package", "اشتراك", "باقات", "العروض", "وايرلس"],
     "contacts": ["تذكرة", "بلاغ", "شكوى", "مشكلة", "ticket", "عطل", "دعم فني"],
-    "dsl_troubleshooting": ["بطيء", "slow", "انقطاع", "واي فاي", "wifi", "راوتر", "كيف", "شلون"],
+    "troubleshoot_slow_internet": ["بطيء", "ضعيف", "slow", "ضعف"],
+    "dsl_troubleshooting": ["انقطاع", "واي فاي", "wifi", "راوتر", "كيف", "شلون"],
 }
 
 INTENT_SERVICE_MAP: Dict[str, List[str]] = {
@@ -16,12 +17,14 @@ INTENT_SERVICE_MAP: Dict[str, List[str]] = {
     "extend_bill": ["CRM"],
     "wireless_packages": ["CRM", "RAG"],
     "contacts": ["CRM"],
+    "troubleshoot_slow_internet": ["CRM"],
     "dsl_troubleshooting": ["RAG", "CRM"],
 }
 
 ALLOWED_INTENTS = [
     "services",
     "dsl_troubleshooting",
+    "troubleshoot_slow_internet",
     "dsl_line_values",
     "dsl_router",
     "dsl_sessions",

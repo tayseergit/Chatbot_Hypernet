@@ -7,7 +7,7 @@ The project utilizes a robust, multi-tier, modular architecture based on Domain-
 
 ### Root Files
 - `main.py`: Entry point for the application. Initializes the server and components.
-- `mock_crm_server.py`: Simulates a CRM backend for Model Context Protocol (MCP) interactions.
+
 - `database_setup.sql`: Database schema definition for MySQL persistence layer.
 - `requirements.txt`: Python package dependencies.
 

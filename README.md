@@ -5,7 +5,7 @@ This project is a robust, multi-tier chatbot application built for an ISP. It fo
 ## Root Files
 
 - **`main.py`**: The main entry point to start the chatbot application. Initializes components, configures AOP, and sets up the server.
-- **`mock_crm_server.py`**: A mock server for simulating Model Context Protocol (MCP) interactions with a CRM backend.
+
 - **`database_setup.sql`**: SQL script for setting up the MySQL persistence layer for sessions and chat history.
 - **`requirements.txt`**: Python dependencies for the project.
 - **`chatbot.xls`**: Documentation or spreadsheet related to chatbot intents/flows.

@@ -54,7 +54,7 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("reset", self._handle_logout))
         self._app.add_handler(CallbackQueryHandler(self._handle_callback_query))
         self._app.add_handler(
-            MessageHandler((filters.TEXT | filters.CONTACT) & ~filters.COMMAND, self._handle_message)
+            MessageHandler((filters.TEXT | filters.CONTACT | filters.PHOTO) & ~filters.COMMAND, self._handle_message)
         )
 
         self._logger.info("Telegram bot started — polling for messages...")
@@ -149,6 +149,32 @@ class TelegramBot:
             await context.bot.send_message(chat_id=query.message.chat_id, text=result_msg)
             return
 
+        if action_data == "req_disconnect_session":
+            await query.answer("جاري إرسال أمر الفصل...")
+            self._logger.info(f"User {user_id} triggered action: {action_data}")
+            
+            # Disable button visually
+            from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+            keyboard = [[InlineKeyboardButton("⏳ جاري الفصل...", callback_data="ignore")]]
+            try:
+                await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
+            except Exception:
+                pass
+            
+            # Execute action via facade
+            result_msg = await asyncio.to_thread(self._facade.execute_action, user_id, action_data)
+            
+            # Send result as a new message
+            await context.bot.send_message(chat_id=query.message.chat_id, text=result_msg)
+            
+            # Mark original as done
+            keyboard_done = [[InlineKeyboardButton("✅ انتهت العملية", callback_data="ignore")]]
+            try:
+                await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard_done))
+            except Exception:
+                pass
+            return
+
         if action_data.startswith("req_activate_pkg_"):
             pkg_id = action_data.replace("req_activate_pkg_", "")
             await query.answer()
@@ -210,12 +236,33 @@ class TelegramBot:
             
         user_id = str(update.effective_user.id)
         
+        image_bytes = None
+        image_path = None
         if message.contact:
             message_text = message.contact.phone_number
+        elif message.photo:
+            message_text = message.caption or "صورة لقيم الراوتر"
+            try:
+                photo_file = await message.photo[-1].get_file()
+                byte_array = await photo_file.download_as_bytearray()
+                image_bytes = bytes(byte_array)
+                
+                # Save image to disk for logging
+                import os, time
+                media_dir = os.path.join(os.getcwd(), "media")
+                os.makedirs(media_dir, exist_ok=True)
+                file_path = os.path.join(media_dir, f"{user_id}_{int(time.time())}.jpg")
+                with open(file_path, "wb") as f:
+                    f.write(image_bytes)
+                image_path = file_path
+                self._logger.info(f"Saved image from {user_id} to {file_path}")
+                
+            except Exception as e:
+                self._logger.error(f"Failed to download photo: {e}")
         else:
             message_text = message.text
 
-        if not message_text:
+        if not message_text and not image_bytes:
             return
 
         self._logger.info(f"Telegram message from {user_id}: {message_text[:100]}")
@@ -226,7 +273,7 @@ class TelegramBot:
 
             # Process through facade
             response = await asyncio.to_thread(
-                self._facade.handle_message, user_id, message_text
+                self._facade.handle_message, user_id, message_text, image_bytes, image_path
             )
 
             # Check if we need to request phone number

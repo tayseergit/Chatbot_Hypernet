@@ -1,5 +1,5 @@
 """
-Tool Executor that makes HTTP requests to the Mock CRM API.
+Tool Executor that communicates with the Hypernet CRM API.
 """
 import os
 import requests
@@ -316,6 +316,50 @@ class ToolExecutor:
                         
                 return response
                 
+            elif tool_name == "get_troubleshooting_data":
+                if not customer_id:
+                    return {"success": False, "error": "Customer ID required"}
+                if not self._crm_client:
+                    return {"success": False, "error": "CRMClient not configured"}
+                    
+                # 1. Fetch overview
+                overview = self._crm_client.get_user_overview(customer_id)
+                data = overview.get("data", {}) if overview.get("success") else {}
+                
+                # 2. Fetch rate
+                try:
+                    rate = self._crm_client.get_user_current_rate(customer_id)
+                    if rate.get("success"):
+                        data["current_rate"] = rate.get("data")
+                except Exception as e:
+                    logger.warning(f"Failed to fetch rate: {e}")
+                    
+                # 3. Fetch sessions
+                try:
+                    sessions = self._crm_client.get_user_sessions(customer_id, limit=5)
+                    if sessions.get("success"):
+                        data["recent_sessions"] = sessions.get("data", {}).get("data", [])
+                except Exception as e:
+                    logger.warning(f"Failed to fetch sessions: {e}")
+                    
+                # 4. Include profile details for speed comparison
+                profile_id = data.get("profile_id")
+                if profile_id:
+                    prof_res = self._crm_client.get_profile(profile_id)
+                    if prof_res.get("success") and "data" in prof_res:
+                        prof_data = prof_res.get("data", {}).get("data", {})
+                        data["profile_details"] = prof_data
+
+                # 5. Provide Action Button for Disconnect and Connection Type
+                conn_type_note = "ADSL" if "ADSL" in str(data.get("profile_name", "")).upper() else "Wi-Fi/Microwave"
+                data["ai_business_logic_notes"] = [
+                    f"حقيقة هامة: نوع اشتراك هذا العميل هو ({conn_type_note}). استخدم هذه المعلومة لتحديد مسار التشخيص المناسب.",
+                    "تعليمات لك: إذا قررت أنه يجب فصل الجلسة كجزء من عملية الإصلاح، أطلب من العميل الضغط على الزر أدناه.",
+                    '[ACTION_BUTTON: {"text": "إعادة تهيئة الاتصال (فصل الجلسة)", "callback_data": "req_disconnect_session"}]'
+                ]
+                
+                return {"success": True, "data": data}
+                
             elif tool_name == "open_ticket":
                 if not self._crm_client:
                     return {"success": False, "error": "CRMClient not configured"}
@@ -380,6 +424,21 @@ class ToolExecutor:
                 else:
                     return {"success": False, "error": "Failed to fetch extend status"}
                     
+            elif tool_name == "disconnect_user":
+                if not customer_id:
+                    return {"success": False, "error": "Customer ID required"}
+                if not self._crm_client:
+                    return {"success": False, "error": "CRMClient not configured"}
+                return self._crm_client.disconnect_user(customer_id)
+                
+            elif tool_name == "get_user_sessions":
+                if not customer_id:
+                    return {"success": False, "error": "Customer ID required"}
+                if not self._crm_client:
+                    return {"success": False, "error": "CRMClient not configured"}
+                limit = parameters.get("limit", 30)
+                return self._crm_client.get_user_sessions(customer_id, limit)
+                
             else:
                 return {"success": False, "error": f"Tool {tool_name} is not implemented yet in ToolExecutor."}
         except Exception as e:

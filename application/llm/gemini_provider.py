@@ -31,9 +31,20 @@ class GeminiProvider:
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{self._config.gemini_model}:generateContent?key={self._config.gemini_api_key}"
 
+        parts = [{"text": prompt}]
+        if options and "image_bytes" in options and options["image_bytes"]:
+            import base64
+            img_b64 = base64.b64encode(options["image_bytes"]).decode("utf-8")
+            parts.append({
+                "inlineData": {
+                    "mimeType": "image/jpeg",
+                    "data": img_b64
+                }
+            })
+
         payload = {
             "contents": [{
-                "parts": [{"text": prompt}]
+                "parts": parts
             }],
             "generationConfig": {
                 "temperature": temp,

@@ -13,7 +13,7 @@ class WorkflowCoordinator:
         self._llm = llm_service
         self._logger = AppLogger.get_logger("workflow_coordinator")
 
-    def execute_workflow(self, decision: AgentDecision, message_text: str, history: str = "") -> Dict[str, Any]:
+    def execute_workflow(self, decision: AgentDecision, message_text: str, history: str = "", image_bytes: bytes = None) -> Dict[str, Any]:
         """Execute required services and gather results to generate an LLM response."""
         requires = decision.requires
         self._logger.info(f"Executing workflow for intent '{decision.intent}', requiring: {requires}")
@@ -48,26 +48,34 @@ class WorkflowCoordinator:
                 crm_data = {"error": str(e)}
                 crm_result = type("CRMResult", (), {"success": False, "error": str(e)})()
 
-        # 3. Dispatch to the appropriate LLM Prompt Pipeline
+        # 3. Restrict image processing to specific intent
+        if image_bytes and decision.intent not in ["troubleshoot_slow_internet", "dsl_line_values"]:
+            self._logger.info(f"Ignoring image since intent '{decision.intent}' does not require visual analysis.")
+            image_bytes = None
+
+        # 4. Dispatch to the appropriate LLM Prompt Pipeline
         if "RAG" in requires and "CRM" in requires:
             llm_answer = self._llm.generate_combined_response(
                 question=message_text,
                 intent=decision.intent,
                 rag_context=rag_context,
                 crm_data=crm_data,
-                history=history
+                history=history,
+                image_bytes=image_bytes
             )
         elif "RAG" in requires:
             llm_answer = self._llm.generate_rag_answer(
                 question=message_text,
                 context=rag_context,
-                history=history
+                history=history,
+                image_bytes=image_bytes
             )
         elif "CRM" in requires:
             llm_answer = self._llm.summarize_crm_data(
                 question=message_text,
                 crm_data=crm_data,
-                history=history
+                history=history,
+                image_bytes=image_bytes
             )
         else:
             llm_answer = self._llm.generate_greeting(message_text)
@@ -95,8 +103,8 @@ class WorkflowCoordinator:
             "wireless_topup": "get_available_packages",
             "bot_package_charging": "get_available_packages",
             "subscription": "get_available_packages",
-            "topup": "get_available_packages",
             "customer_info": "get_customer_info",
+            "troubleshoot_slow_internet": "get_troubleshooting_data",
         }
         return mapping.get(intent, "get_customer_info")
 

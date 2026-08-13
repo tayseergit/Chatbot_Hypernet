@@ -41,7 +41,7 @@ class ResponseService:
         # Parse actions from formatted text
         # STRICT WHITELIST: Only pre-defined buttons are allowed. 
         # The LLM cannot create its own actions.
-        ALLOWED_ACTIONS = {"confirm_extend_bill", "req_extend_bill"}
+        ALLOWED_ACTIONS = {"confirm_extend_bill", "req_extend_bill", "req_disconnect_session"}
         
         actions = []
         for action_match in re.finditer(r'\[ACTION_BUTTON:\s*({.*?})\]', formatted, re.DOTALL):

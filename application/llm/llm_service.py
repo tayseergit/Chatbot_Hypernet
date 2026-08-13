@@ -42,11 +42,12 @@ class LLMService:
 
     @log_operation()
     @track_metrics("llm_rag_answer")
-    def generate_rag_answer(self, question: str, context: str, history: str = "") -> str:
+    def generate_rag_answer(self, question: str, context: str, history: str = "", image_bytes: Optional[bytes] = None) -> str:
         """Generate an answer using RAG context."""
         t0 = time.time()
         prompt = self._prompt_builder.build_rag_prompt(question, context, history)
-        raw = self._engine.infer(prompt)
+        options = {"image_bytes": image_bytes} if image_bytes else None
+        raw = self._engine.infer(prompt, options)
         latency = (time.time() - t0) * 1000
         self._log_service.log_request(
             endpoint="LLM / RAG", method="LLM",
@@ -57,12 +58,13 @@ class LLMService:
 
     @log_operation()
     @track_metrics("llm_crm_summary")
-    def summarize_crm_data(self, question: str, crm_data: Dict, history: str = "") -> str:
+    def summarize_crm_data(self, question: str, crm_data: Dict, history: str = "", image_bytes: Optional[bytes] = None) -> str:
         """Answer the user's question using CRM data."""
         t0 = time.time()
         data_str = json.dumps(crm_data, ensure_ascii=False, indent=2)
         prompt = self._prompt_builder.build_crm_prompt(question, data_str, history)
-        raw = self._engine.infer(prompt)
+        options = {"image_bytes": image_bytes} if image_bytes else None
+        raw = self._engine.infer(prompt, options)
         latency = (time.time() - t0) * 1000
         self._log_service.log_request(
             endpoint="LLM / CRM Summary", method="LLM",
@@ -74,14 +76,15 @@ class LLMService:
     @log_operation()
     @track_metrics("llm_combined")
     def generate_combined_response(self, question: str, intent: str,
-                                    rag_context: str, crm_data: Dict, history: str = "") -> str:
+                                    rag_context: str, crm_data: Dict, history: str = "", image_bytes: Optional[bytes] = None) -> str:
         """Generate response using both RAG and CRM data."""
         t0 = time.time()
         data_str = json.dumps(crm_data, ensure_ascii=False, indent=2)
         prompt = self._prompt_builder.build_combined_prompt(
             question, intent, rag_context, data_str, history
         )
-        raw = self._engine.infer(prompt)
+        options = {"image_bytes": image_bytes} if image_bytes else None
+        raw = self._engine.infer(prompt, options)
         latency = (time.time() - t0) * 1000
         self._log_service.log_request(
             endpoint="LLM / Combined", method="LLM",
