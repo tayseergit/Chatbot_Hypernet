@@ -32,7 +32,7 @@ class TelegramBot:
             from telegram import Update
             from telegram.ext import (
                 ApplicationBuilder, CommandHandler,
-                MessageHandler, filters,
+                MessageHandler, CallbackQueryHandler, filters,
             )
         except ImportError:
             self._logger.error(
@@ -52,6 +52,7 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("stats", self._handle_stats))
         self._app.add_handler(CommandHandler("logout", self._handle_logout))
         self._app.add_handler(CommandHandler("reset", self._handle_logout))
+        self._app.add_handler(CallbackQueryHandler(self._handle_callback_query))
         self._app.add_handler(
             MessageHandler((filters.TEXT | filters.CONTACT) & ~filters.COMMAND, self._handle_message)
         )
@@ -101,20 +102,127 @@ class TelegramBot:
         from telegram import ReplyKeyboardRemove
         await update.message.reply_text(response_msg, reply_markup=ReplyKeyboardRemove())
 
+    async def _handle_callback_query(self, update, context) -> None:
+        """Handle inline button clicks."""
+        query = update.callback_query
+        user_id = str(query.from_user.id)
+        action_data = query.data
+        
+        if action_data == "ignore":
+            await query.answer()
+            return
+            
+        if action_data == "req_extend_bill":
+            await query.answer()
+            from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+            keyboard = [
+                [InlineKeyboardButton("نعم، تأكيد التمديد", callback_data="confirm_extend_bill"),
+                 InlineKeyboardButton("لا، إلغاء", callback_data="cancel_extend_bill")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_reply_markup(reply_markup=reply_markup)
+            return
+            
+        if action_data == "cancel_extend_bill":
+            await query.answer("تم الإلغاء")
+            from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+            keyboard = [[InlineKeyboardButton("❌ تم الإلغاء", callback_data="ignore")]]
+            await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
+            return
+
+        if action_data == "confirm_extend_bill":
+            await query.answer("جاري معالجة طلبك...")
+            self._logger.info(f"User {user_id} triggered action: {action_data}")
+            
+            # Disable button visually
+            from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+            keyboard = [[InlineKeyboardButton("✅ تمت الموافقة", callback_data="ignore")]]
+            try:
+                await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
+            except Exception as e:
+                self._logger.warning(f"Could not edit message markup: {e}")
+            
+            # Execute action via facade
+            result_msg = await asyncio.to_thread(self._facade.execute_action, user_id, action_data)
+            
+            # Send result as a new message so it's clear
+            await context.bot.send_message(chat_id=query.message.chat_id, text=result_msg)
+            return
+
+        if action_data.startswith("req_activate_pkg_"):
+            pkg_id = action_data.replace("req_activate_pkg_", "")
+            await query.answer()
+            from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+            keyboard = [
+                [InlineKeyboardButton("نعم، تأكيد الشراء والتفعيل", callback_data=f"confirm_activate_pkg_{pkg_id}")],
+                [InlineKeyboardButton("لا، إلغاء", callback_data="cancel_activate_pkg")]
+            ]
+            try:
+                await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
+            except Exception as e:
+                self._logger.warning(f"Could not edit message markup: {e}")
+            return
+            
+        if action_data == "cancel_activate_pkg":
+            await query.answer("تم الإلغاء")
+            from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+            keyboard = [[InlineKeyboardButton("❌ تم الإلغاء", callback_data="ignore")]]
+            try:
+                await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
+            except Exception:
+                pass
+            return
+
+        if action_data.startswith("confirm_activate_pkg_"):
+            real_action_data = action_data.replace("confirm_", "") # becomes activate_pkg_{pkg_id}
+            await query.answer("جاري معالجة طلبك...")
+            self._logger.info(f"User {user_id} triggered action: {real_action_data}")
+            
+            # Disable button visually
+            from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+            keyboard = [[InlineKeyboardButton("⏳ جاري المعالجة...", callback_data="ignore")]]
+            try:
+                await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
+            except Exception as e:
+                self._logger.warning(f"Could not edit message markup: {e}")
+            
+            # Execute action via facade
+            result_msg = await asyncio.to_thread(self._facade.execute_action, user_id, real_action_data)
+            
+            # Send result as a new message so it's clear
+            await context.bot.send_message(chat_id=query.message.chat_id, text=result_msg)
+            
+            # Mark original as done
+            keyboard_done = [[InlineKeyboardButton("✅ انتهت العملية", callback_data="ignore")]]
+            try:
+                await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard_done))
+            except Exception:
+                pass
+            return
     async def _handle_message(self, update, context) -> None:
         """Handle incoming text messages — main handler."""
+        if update.edited_message:
+            return  # Ignore edited messages
+            
+        message = update.message
+        if not message:
+            return
+            
         user_id = str(update.effective_user.id)
         
-        if update.message.contact:
-            message_text = update.message.contact.phone_number
+        if message.contact:
+            message_text = message.contact.phone_number
         else:
-            message_text = update.message.text
+            message_text = message.text
+
+        if not message_text:
+            return
 
         self._logger.info(f"Telegram message from {user_id}: {message_text[:100]}")
 
         try:
             # Send typing indicator
-            await update.message.chat.send_action("typing")
+            await message.chat.send_action("typing")
 
             # Process through facade
             response = await asyncio.to_thread(
@@ -126,11 +234,38 @@ class TelegramBot:
                 from telegram import ReplyKeyboardMarkup, KeyboardButton
                 contact_btn = KeyboardButton("📱 مشاركة رقم الهاتف", request_contact=True)
                 reply_markup = ReplyKeyboardMarkup([[contact_btn]], one_time_keyboard=True, resize_keyboard=True)
-                await update.message.reply_text(response.text, reply_markup=reply_markup)
+                await message.reply_text(response.text, reply_markup=reply_markup)
             else:
-                from telegram import ReplyKeyboardRemove
-                # Ensure keyboard is removed if previously sent
-                await update.message.reply_text(response.text, reply_markup=ReplyKeyboardRemove())
+                from telegram import ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
+                
+                # Check for actions/buttons
+                reply_markup = None
+                if getattr(response, "actions", []):
+                    keyboard = []
+                    for action in response.actions:
+                        if action.get("type") == "button":
+                            btn_text = action.get("text", "تأكيد")
+                            btn_data = action.get("callback_data", "unknown")
+                            keyboard.append([InlineKeyboardButton(btn_text, callback_data=btn_data)])
+                        elif action.get("type") == "document":
+                            doc_path = action.get("path")
+                            import os
+                            if os.path.exists(doc_path):
+                                try:
+                                    with open(doc_path, 'rb') as f:
+                                        await message.reply_document(document=f)
+                                except Exception as e:
+                                    self._logger.error(f"Failed to send document {doc_path}: {e}")
+                            else:
+                                self._logger.warning(f"Document not found at {doc_path}")
+
+                    if keyboard:
+                        reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                if reply_markup is None:
+                    reply_markup = ReplyKeyboardRemove()
+                    
+                await message.reply_text(response.text, reply_markup=reply_markup)
 
             self._logger.info(
                 f"Replied to {user_id} | intent={response.intent} "
@@ -139,4 +274,4 @@ class TelegramBot:
 
         except Exception as e:
             self._logger.error(f"Error handling Telegram message: {e}")
-            await update.message.reply_text(SUPPORT_FALLBACK_MESSAGE)
+            await message.reply_text(SUPPORT_FALLBACK_MESSAGE)

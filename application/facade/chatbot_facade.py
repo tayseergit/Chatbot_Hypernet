@@ -133,9 +133,8 @@ class ChatbotFacade:
 
             # 2. Agent analysis — decides WHAT is needed
             t1 = time.time()
-            history_objs = self._backend.message_service.load_history(session.session_id, limit=3)
-            # In our mock, history_objs is empty string list, let's just make it a simple string for now.
-            history_text = "\n".join([str(m) for m in history_objs])
+            history_objs = self._backend.message_service.load_history(session.session_id, limit=40, days=7)
+            history_text = "\n".join([f"{m.sender}: {m.content}" for m in history_objs])
             context = {
                 "session_id": session.session_id,
                 "customer_id": session.customer_id or "unknown",
@@ -219,6 +218,131 @@ class ChatbotFacade:
         self._backend.session_service.close_session(user_id)
         self._logger.info(f"User {user_id} logged out. Session closed.")
         return "تم تسجيل الخروج بنجاح. تم مسح بيانات الجلسة الحالية."
+
+    @log_operation()
+    def execute_action(self, user_id: str, action_data: str) -> str:
+        """Handle inline button actions."""
+        try:
+            session = self._backend.session_service.get_or_create_session(user_id)
+            if not session.customer_id:
+                return "عذراً، يجب عليك تسجيل الدخول أولاً لتنفيذ هذا الإجراء."
+                
+            if action_data == "confirm_extend_bill":
+                # Get username
+                overview = self._backend.crm_client.get_user_overview(session.customer_id)
+                if not overview.get("success") or "data" not in overview:
+                    return "عذراً، حدث خطأ أثناء جلب بيانات حسابك."
+                
+                username = overview["data"].get("username")
+                if not username:
+                    return "عذراً، لم نتمكن من تحديد اسم المستخدم الخاص بك."
+                
+                # Execute extension
+                res = self._backend.crm_client.extend_user_bill(username)
+                if res.get("success"):
+                    msg = res.get("data", {}).get("message", "")
+                    if "successfully" in msg.lower() or "success" in msg.lower():
+                        return "✅ تم تمديد صلاحية حسابك بنجاح!"
+                    elif "cannot extend" in msg.lower():
+                        return "❌ عذراً، لا يمكنك تمديد صلاحية هذا الحساب (ربما استنفدت الحد الأقصى)."
+                    else:
+                        return f"نتيجة العملية: {msg}"
+                else:
+                    return "❌ عذراً، حدث خطأ أثناء محاولة تمديد الصلاحية."
+                    
+            elif action_data.startswith("activate_pkg_"):
+                pkg_id_str = action_data.replace("activate_pkg_", "")
+                try:
+                    pkg_id = int(pkg_id_str)
+                except ValueError:
+                    return "❌ معرف الباقة غير صالح."
+
+                # 1. Fetch package details
+                pkg_res = self._backend.crm_client.get_available_packages(session.customer_id)
+                if not pkg_res.get("success") or "data" not in pkg_res:
+                    return "❌ حدث خطأ أثناء جلب تفاصيل الباقة."
+                
+                target_pkg = None
+                api_json = pkg_res["data"]
+                if isinstance(api_json, dict) and "data" in api_json:
+                    packages = api_json["data"]
+                    if isinstance(packages, list):
+                        for p in packages:
+                            if str(p.get("id")) == str(pkg_id):
+                                target_pkg = p
+                                break
+                
+                if not target_pkg:
+                    return "❌ الباقة المطلوبة غير متوفرة أو غير صالحة لحسابك."
+
+                quota_mb_str = target_pkg.get("quota_mb", "0")
+                try:
+                    quota_gb = float(quota_mb_str) / 1024
+                except ValueError:
+                    quota_gb = 0
+                    
+                pkg_price = 0.0
+                try:
+                    pkg_price = float(target_pkg.get("price", 0))
+                except ValueError:
+                    pass
+
+                # 2. Fetch balance
+                overview = self._backend.crm_client.get_user_overview(session.customer_id)
+                user_balance = 0.0
+                if overview.get("success") and "data" in overview:
+                    b_val = overview["data"].get("balance")
+                    if b_val is not None:
+                        try:
+                            user_balance = float(b_val)
+                        except (ValueError, TypeError):
+                            pass
+                
+                # 3. Check loan eligibility if balance is insufficient
+                can_activate = False
+                if user_balance >= pkg_price:
+                    can_activate = True
+                else:
+                    used_loan_amount = 0.0
+                    inv_res = self._backend.crm_client.get_user_invoices(session.customer_id)
+                    if inv_res.get("success") and "data" in inv_res:
+                        inv_data = inv_res["data"].get("data", [])
+                        for inv in inv_data:
+                            if isinstance(inv, dict):
+                                paid_val = inv.get("paid")
+                                is_unpaid = (paid_val == 0 or paid_val == "0" or paid_val is False)
+                                if inv.get("type") == "pkg_activation" and is_unpaid:
+                                    amt = 0.0
+                                    try:
+                                        amt = float(inv.get("amount", inv.get("total", 0)))
+                                    except:
+                                        pass
+                                    used_loan_amount += amt
+                    if (used_loan_amount + pkg_price) <= 50:
+                        can_activate = True
+
+                if not can_activate:
+                    return "❌ عذراً، رصيدك غير كافٍ أو أنك استنفدت حد السلفة المسموح به (50 كحد أقصى)."
+
+                # 4. Perform Activation
+                res = self._backend.crm_client.activate_package(session.customer_id, pkg_id)
+                if res.get("success"):
+                    data = res.get("data", {})
+                    if data.get("status") is False:
+                        return f"❌ عذراً، لم تنجح العملية: {data.get('message', 'رصيد غير كافٍ')}"
+                        
+                    msg = str(data.get("message", ""))
+                    if data.get("status") is True or "successfully" in msg.lower() or "success" in msg.lower() or "تم" in msg:
+                        return "✅ تم تفعيل الباقة بنجاح!"
+                    else:
+                        return f"نتيجة العملية: {msg}"
+                else:
+                    return "❌ عذراً، حدث خطأ أثناء تواصلنا مع المخدم لتفعيل الباقة."
+                    
+            return "إجراء غير معروف."
+        except Exception as e:
+            self._logger.error(f"Error executing action {action_data}: {e}")
+            return "حدث خطأ غير متوقع أثناء تنفيذ الإجراء."
 
     def shutdown(self) -> None:
         """Cleanup and shutdown."""

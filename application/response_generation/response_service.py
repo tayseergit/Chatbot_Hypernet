@@ -1,5 +1,7 @@
 """Response service — main orchestrator for response generation."""
 
+import re
+import json
 from typing import Dict, List, Optional
 from application.response_generation.response_builder import ResponseBuilder
 from application.response_generation.formatter import ResponseFormatter
@@ -36,9 +38,47 @@ class ResponseService:
             sources.append("CRM")
         sources.append("LLM")
 
+        # Parse actions from formatted text
+        # STRICT WHITELIST: Only pre-defined buttons are allowed. 
+        # The LLM cannot create its own actions.
+        ALLOWED_ACTIONS = {"confirm_extend_bill", "req_extend_bill"}
+        
+        actions = []
+        for action_match in re.finditer(r'\[ACTION_BUTTON:\s*({.*?})\]', formatted, re.DOTALL):
+            try:
+                action_data = json.loads(action_match.group(1))
+                cb_data = action_data.get("callback_data", "")
+                if cb_data in ALLOWED_ACTIONS or cb_data.startswith("req_activate_pkg_") or cb_data.startswith("activate_pkg_"):
+                    action_data["type"] = "button"
+                    actions.append(action_data)
+                else:
+                    self._logger.warning(f"LLM tried to create an unauthorized button: {action_data}")
+            except json.JSONDecodeError:
+                self._logger.warning(f"Failed to parse action button JSON: {action_match.group(1)}")
+                
+        # Always remove the tags from the text
+        formatted = re.sub(r'\[ACTION_BUTTON:\s*({.*?})\]', '', formatted, flags=re.DOTALL).strip()
+
+        # Parse multiple document sending tags [SEND_DOCUMENT: filename.pdf]
+        import os
+        for doc_match in re.finditer(r'\[SEND_DOCUMENT:\s*(.+?\.pdf)\]', formatted, re.IGNORECASE):
+            filename = doc_match.group(1).strip()
+            # Ensure safe path relative to resources/pdfs
+            filename = os.path.basename(filename)
+            doc_path = os.path.join("resources", "pdfs", filename)
+            
+            actions.append({
+                "type": "document",
+                "path": doc_path
+            })
+            
+        # Remove all tags from text
+        formatted = re.sub(r'\[SEND_DOCUMENT:\s*(.+?\.pdf)\]', '', formatted, flags=re.IGNORECASE).strip()
+
         return ChatResponse(
             session_id=session_id, text=formatted,
             intent=intent, sources_used=sources,
+            actions=actions
         )
 
     def generate_error(self, session_id: str, error: str) -> ChatResponse:

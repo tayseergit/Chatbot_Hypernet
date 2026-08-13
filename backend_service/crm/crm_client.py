@@ -47,11 +47,14 @@ class CRMClient:
             return {"success": True, "data": response_data}
             
         except requests.RequestException as e:
-            self._logger.error(f"CRM GET request failed: {e}")
-            response_data = {"error": str(e)}
             if hasattr(e, 'response') and e.response is not None:
                 status_code = e.response.status_code
-            return {"success": False, "error": str(e)}
+                if status_code != 404:
+                    self._logger.error(f"CRM GET request failed: {e}")
+            else:
+                self._logger.error(f"CRM GET request failed: {e}")
+            response_data = {"error": "CRM Connection Error"}
+            return {"success": False, "error": "CRM Connection Error"}
         finally:
             latency = (time.time() - t0) * 1000
             self._log_service.log_request(
@@ -65,16 +68,20 @@ class CRMClient:
         status_code = 0
         response_data = None
         try:
-            response = requests.post(url, headers=self._get_headers(), json=payload, timeout=10)
-            data = response.json()
-            
+            response = requests.post(url, headers=self._get_headers(), json=payload, timeout=30)
+            try:
+                data = response.json()
+            except ValueError:
+                self._logger.error(f"CRM POST returned invalid JSON. Status: {response.status_code}")
+                return {"success": False, "error": "Invalid response format"}
+                
             if allowed_fields:
                 data = self._redact_response(data, allowed_fields)
             return {"success": True, "data": data}
             
         except requests.RequestException as e:
             self._logger.error(f"CRM POST request failed: {e}")
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": "CRM Connection Error"}
 
     def search_user_by_phone(self, phone: str) -> Dict[str, Any]:
         """Search for a user by phone number using the CRM."""
@@ -133,10 +140,10 @@ class CRMClient:
             return {"success": False, "error": "Invalid credentials"}
         except Exception as e:
             self._logger.error(f"User login verification failed: {e}")
-            response_data = {"error": str(e)}
+            response_data = {"error": "Login Verification Error"}
             if hasattr(e, 'response') and e.response is not None:
                 status_code = e.response.status_code
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": "Login Verification Error"}
         finally:
             latency = (time.time() - t0) * 1000
             # Redact password before logging
@@ -170,6 +177,7 @@ class CRMClient:
                     
                     # DEV OVERRIDE FOR TESTING (Uncomment keys to force values for testing)
                     DEV_OVERRIDE = {
+                        # "balance": 10000000000000,
                         # "profile_type": 4,
                         # "remaining_rx": 0,
                         # "cpe_mac": "AA:BB:CC:DD:EE",
@@ -185,3 +193,56 @@ class CRMClient:
         # without overriding get() behaviour. For now, the bot WILL see these fields.
                 
         return response
+
+    def get_extend_status(self, username: str) -> Dict[str, Any]:
+        """Fetch the current bill extension status for a user."""
+        url = f"{self._auth_manager._base_url}/user-extends/extendBill"
+        # The API requires a GET request with a JSON body containing the username
+        t0 = time.time()
+        status_code = 0
+        response_data = None
+        try:
+            response = requests.get(url, headers=self._get_headers(), json={"username": username}, timeout=10)
+            status_code = response.status_code
+            response.raise_for_status()
+            data = response.json()
+            response_data = data
+            return {"success": True, "data": data}
+        except requests.RequestException as e:
+            self._logger.error(f"CRM GET extend status failed: {e}")
+            response_data = {"error": "CRM Connection Error"}
+            if hasattr(e, 'response') and e.response is not None:
+                status_code = e.response.status_code
+            return {"success": False, "error": "CRM Connection Error"}
+        finally:
+            latency = (time.time() - t0) * 1000
+            self._log_service.log_request(
+                endpoint=url, method="GET", payload={"username": username}, 
+                response=response_data, status_code=status_code, latency_ms=latency
+            )
+
+    def extend_user_bill(self, username: str) -> Dict[str, Any]:
+        """Perform the actual bill extension (POST)."""
+        url = f"{self._auth_manager._base_url}/user/extends"
+        payload = {"username": username}
+        return self.post(url, payload)
+
+    def get_iptv_expiration(self, customer_id: str) -> Dict[str, Any]:
+        """Fetch the IPTV expiration date for a user."""
+        url = f"{self._auth_manager._base_url}/iptv/user/{customer_id}/expiration"
+        return self.get(url)
+
+    def get_user_invoices(self, customer_id: str) -> Dict[str, Any]:
+        """Fetch user invoices for calculating loan packages."""
+        url = f"{self._auth_manager._base_url}/users/{customer_id}/invoices?limit=12&page=1"
+        return self.get(url)
+
+    def activate_package(self, customer_id: str, package_id: int) -> Dict[str, Any]:
+        """Activate a package for a user (loan or paid)."""
+        url = f"{self._auth_manager._base_url}/packages/activate"
+        payload = {
+            "package_id": package_id,
+            "user_id": int(customer_id),
+            "use_user_balance": True
+        }
+        return self.post(url, payload)

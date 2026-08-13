@@ -88,11 +88,14 @@ class WorkflowCoordinator:
             "open_ticket": "get_customer_info",
             "check_ticket": "get_customer_info",
             "billing": "get_customer_info",
+            "extend_bill": "check_extend_status",
             "contacts": "get_customer_info",
             "wireless_packages": "get_available_packages",
             "adsl_packages": "get_available_packages",
             "wireless_topup": "get_available_packages",
             "bot_package_charging": "get_available_packages",
+            "subscription": "get_available_packages",
+            "topup": "get_available_packages",
             "customer_info": "get_customer_info",
         }
         return mapping.get(intent, "get_customer_info")
@@ -105,11 +108,14 @@ class WorkflowCoordinator:
             "open_ticket": "create_ticket",
             "check_ticket": "get_tickets",
             "billing": "get_billing",
+            "extend_bill": "extend_bill",
             "contacts": "get_tickets",
             "wireless_packages": "get_packages",
             "adsl_packages": "get_packages",
             "wireless_topup": "get_packages",
             "bot_package_charging": "get_packages",
+            "subscription": "get_packages",
+            "topup": "get_packages",
             "customer_info": "get_customer_info",
         }
         return mapping.get(intent, "get_customer_info")

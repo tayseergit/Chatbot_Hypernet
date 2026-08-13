@@ -5,6 +5,7 @@ from typing import Dict, List
 # Fallback keywords for graceful degradation
 INTENT_KEYWORDS: Dict[str, List[str]] = {
     "billing": ["رصيد", "رصيدي", "كم رصيدي", "حسابي", "فاتورة", "فواتير", "دفع", "sداد"],
+    "extend_bill": ["تمديد", "دين", "أيام إضافية", "يومين", "سلفة", "استلاف"],
     "wireless_packages": ["باقة", "باقتي", "package", "اشتراك", "باقات", "العروض", "وايرلس"],
     "contacts": ["تذكرة", "بلاغ", "شكوى", "مشكلة", "ticket", "عطل", "دعم فني"],
     "dsl_troubleshooting": ["بطيء", "slow", "انقطاع", "واي فاي", "wifi", "راوتر", "كيف", "شلون"],
@@ -12,6 +13,7 @@ INTENT_KEYWORDS: Dict[str, List[str]] = {
 
 INTENT_SERVICE_MAP: Dict[str, List[str]] = {
     "billing": ["CRM"],
+    "extend_bill": ["CRM"],
     "wireless_packages": ["CRM", "RAG"],
     "contacts": ["CRM"],
     "dsl_troubleshooting": ["RAG", "CRM"],
@@ -33,6 +35,7 @@ ALLOWED_INTENTS = [
     "iptv_packages",
     "iptv_fees",
     "static_ip",
+    "extend_bill",
     "billing",
     "subscription",
     "sales_routing",
@@ -44,7 +47,7 @@ ALLOWED_INTENTS = [
     "bot_language",
     "bot_auth",
     "bot_account_info",
-    "bot_speed_change",
+    # "bot_speed_change",
     "bot_package_charging",
     "bot_knowledge",
     "bot_escalation",

@@ -1,0 +1,49 @@
+{
+  "adsl_monthly": [
+    {"speed": "512 KB", "quota": "30 GB", "price": "140", "speed_after_quota": "256 KB"},
+    {"speed": "1 MB", "quota": "50 GB", "price": "185", "speed_after_quota": "256 KB"},
+    {"speed": "2 MB", "quota": "85 GB", "price": "240", "speed_after_quota": "256 KB"},
+    {"speed": "4 MB", "quota": "140 GB", "price": "380", "speed_after_quota": "512 KB"},
+    {"speed": "8 MB", "quota": "175 GB", "price": "640", "speed_after_quota": "1 MB"},
+    {"speed": "16 MB", "quota": "225 GB", "price": "830", "speed_after_quota": "2 MB"}
+  ],
+  "adsl_topup": [
+    {"quota": "5 GB", "price": "18"},
+    {"quota": "10 GB", "price": "33"},
+    {"quota": "20 GB", "price": "57"},
+    {"quota": "30 GB", "price": "76"},
+    {"quota": "50 GB", "price": "115"},
+    {"quota": "75 GB", "price": "135"},
+    {"quota": "100 GB", "price": "190"},
+    {"quota": "200 GB", "price": "350"},
+    {"quota": "500 GB", "price": "835"},
+    {"quota": "1000 GB", "price": "1,525"},
+    {"quota": "5000 GB", "price": "7,470"}
+  ],
+  "services": [
+    {"name": "التمديد", "price": "27", "notes": "ليوم واحد فقط"},
+    {"name": "رفع السرعة", "price": "60", "notes": "مرة واحدة"},
+    {"name": "خفض السرعة", "price": "80", "notes": "مرة واحدة"},
+    {"name": "ايقاف مؤقت", "price": "140", "notes": "شهرياً"},
+    {"name": "STATIC - IP", "price": "2,220", "notes": "سنوياً"},
+    {"name": "رسوم اشتراك IPTV", "price": "52", "notes": "مرة واحدة"},
+    {"name": "رسوم الغاء IPTV", "price": "40", "notes": "مرة واحدة"}
+  ],
+  "iptv_packages": [
+    {"name": "PRO (SPORT) - LIKE (SUPER SPORT)", "price": "175", "channels": "P (79) – L (91)"},
+    {"name": "PRO (FAMILY) - LIKE (FAMILY)", "price": "220", "channels": "P (92) – L (101)"},
+    {"name": "PRO (PREMIUM) - LIKE (DIMOUND)", "price": "290", "channels": "P (104) – L (126)"},
+    {"name": "PRO (Yearly - X_TREAM)", "price": "Y 3,200 – X 3,940", "channels": "Y (104) – X (115)"},
+    {"name": "LIKE (Like Elite)", "price": "3,190", "channels": "E (126)"}
+  ],
+  "contacts": [
+    {"department": "الرقم الرباعي", "number": "011-9498"},
+    {"department": "الدعم الفني", "number": "0932274222"},
+    {"department": "المبيعات", "number": "0993311844"},
+    {"department": "فاكس", "number": "0114435219"},
+    {"department": "IPTV - PRO (برو)", "number": "011-4014"},
+    {"department": "IPTV - LIKE (لايك)", "number": "011-4084"},
+    {"department": "IPTV - WhatsApp PRO (واتساب برو)", "number": "0996000135"},
+    {"department": "IPTV - WhatsApp LIKE (واتساب لايك)", "number": "0949099777"}
+  ]
+}

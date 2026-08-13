@@ -203,6 +203,22 @@ class ToolExecutor:
                     elif iptv_type == "like":
                         notes.append(f"حقيقة: العميل مشترك بخدمة التلفزيون IPTV (نسخة Like) وباقته هي ({iptv_pkg}). إذا استفسر عن الروابط، زوده برابط تطبيق Hyper IPTV Like: https://likesyria.sy/login")
 
+                    # Try to fetch IPTV expiration if they are subscribed
+                    if iptv_type and iptv_type != "none":
+                        try:
+                            iptv_res = self._crm_client.get_iptv_expiration(customer_id)
+                            if iptv_res.get("success") and "data" in iptv_res:
+                                iptv_data = iptv_res["data"]
+                                if isinstance(iptv_data, dict) and "data" in iptv_data:
+                                    exp_date = iptv_data["data"].get("expiration_date")
+                                    if exp_date:
+                                        if exp_date == "غير مسجل":
+                                            notes.append("حقيقة: حساب العميل غير مسجل بعد في نظام الـ IPTV (لا يوجد تاريخ انتهاء فعلي).")
+                                        else:
+                                            notes.append(f"حقيقة: تاريخ انتهاء اشتراك خدمة التلفزيون (IPTV) هو: {exp_date}")
+                        except Exception as e:
+                            logger.error(f"Failed to fetch IPTV expiration: {e}")
+
                     if notes:
                         data["ai_business_logic_notes"] = notes
                         
@@ -215,8 +231,37 @@ class ToolExecutor:
                     for f in fields_to_remove:
                         data.pop(f, None)
                         
-                    # If the requested tool was get_available_packages, ALSO fetch and inject the packages
+                    # Only fetch and inject the packages if the requested tool is get_available_packages
                     if tool_name == "get_available_packages":
+                        user_balance = 0.0
+                        if "balance" in data:
+                            try:
+                                user_balance = float(data["balance"])
+                            except (ValueError, TypeError):
+                                pass
+
+                        used_loan_amount = 0.0
+                        inv_res = self._crm_client.get_user_invoices(customer_id)
+                        logger.info(f"Fetched invoices for {customer_id}: {inv_res}")
+                        if inv_res.get("success") and "data" in inv_res:
+                            inv_data_payload = inv_res["data"]
+                            inv_data = []
+                            if isinstance(inv_data_payload, dict):
+                                inv_data = inv_data_payload.get("data", [])
+                            elif isinstance(inv_data_payload, list):
+                                inv_data = inv_data_payload
+                            for inv in inv_data:
+                                if isinstance(inv, dict):
+                                    paid_val = inv.get("paid")
+                                    is_unpaid = (paid_val == 0 or paid_val == "0" or paid_val is False)
+                                    if inv.get("type") == "pkg_activation" and is_unpaid:
+                                        amt = 0.0
+                                        try:
+                                            amt = float(inv.get("amount", inv.get("total", 0)))
+                                        except:
+                                            pass
+                                        used_loan_amount += amt
+
                         res_pkg = self._crm_client.get_available_packages(customer_id)
                         if res_pkg.get("success") and "data" in res_pkg:
                             api_json = res_pkg["data"]
@@ -231,13 +276,43 @@ class ToolExecutor:
                                                 quota_gb = float(quota_mb_str) / 1024
                                             except ValueError:
                                                 quota_gb = 0
+                                                
+                                            pkg_price = 0.0
+                                            try:
+                                                pkg_price = float(p.get("price", 0))
+                                            except ValueError:
+                                                pass
+
+                                            pkg_id = p.get("id")
+                                            pkg_name = p.get("name", "")
                                             
-                                            filtered_packages.append({
-                                                "name": p.get("name"),
-                                                "quota_gb": f"{quota_gb:g} GB",
-                                                "price": p.get("price")
-                                            })
+                                            can_activate = False
+                                            loan_note = ""
+                                            if user_balance >= pkg_price:
+                                                can_activate = True
+                                            else:
+                                                if (used_loan_amount + pkg_price) <= 50:
+                                                    can_activate = True
+                                                    loan_note = " (ستتم إضافة التكلفة كسلفة على الفاتورة القادمة)"
+                                            
+                                            if can_activate:
+                                                filtered_packages.append({
+                                                    "name": pkg_name + loan_note,
+                                                    "quota_gb": f"{quota_gb:g} GB",
+                                                    "price": p.get("price")
+                                                })
+                                                notes.append(f'[ACTION_BUTTON: {{"text": "تفعيل {pkg_name}", "callback_data": "req_activate_pkg_{pkg_id}"}}]')
+                                            else:
+                                                filtered_packages.append({
+                                                    "name": pkg_name + " (الرصيد غير كافٍ)",
+                                                    "quota_gb": f"{quota_gb:g} GB",
+                                                    "price": p.get("price")
+                                                })
+                                                
                                     data["available_topup_packages"] = filtered_packages
+                                    
+                        if notes:
+                            data["ai_business_logic_notes"] = notes
                         
                 return response
                 
@@ -247,6 +322,64 @@ class ToolExecutor:
                 url = f"{self._crm_client._auth_manager._base_url}/tickets"
                 return self._crm_client.post(url, parameters)
                 
+            elif tool_name == "check_extend_status":
+                if not customer_id:
+                    return {"success": False, "error": "Customer ID required"}
+                
+                # Fetch username and expiration first
+                overview = self._crm_client.get_user_overview(customer_id)
+                username = None
+                expiration = None
+                if overview.get("success") and "data" in overview:
+                    username = overview["data"].get("username")
+                    expiration = overview["data"].get("expiration")
+                    
+                if not username:
+                    return {"success": False, "error": "Could not determine username"}
+                    
+                # Prevent extension if expired > 3 days
+                if expiration:
+                    try:
+                        from datetime import datetime
+                        # e.g., '2024-05-10 12:00:00'
+                        exp_date = datetime.strptime(str(expiration)[:19], "%Y-%m-%d %H:%M:%S")
+                        now = datetime.now()
+                        diff_days = (now - exp_date).days
+                        if diff_days >= 3:
+                            notes = [
+                                f"حقيقة: حساب العميل منتهي الصلاحية منذ فترة طويلة (انتهى في {expiration}).",
+                                "حقيقة: الحد الأقصى المسموح به للتمديد هو 3 أيام فقط كحد أقصى إجمالاً.",
+                                "تعليمات لك: اعتذر من العميل وأخبره أنه لا يمكنه الاستفادة من خدمة التمديد لأن اشتراكه منتهي منذ أكثر من 3 أيام، وعملية التمديد لن تكون كافية لإعادة تفعيل الخدمة. اطلب منه تجديد اشتراكه (Top-up)."
+                            ]
+                            return {"success": True, "data": {"extend_bill_value": -2, "ai_business_logic_notes": notes}}
+                    except Exception as e:
+                        logger.warning(f"Failed to parse expiration date {expiration}: {e}")
+                    
+                # Fetch extend status
+                ext_status = self._crm_client.get_extend_status(username)
+                if ext_status.get("success") and "data" in ext_status:
+                    val = ext_status["data"].get("extend_bill")
+                    notes = []
+                    if val == 0:
+                        notes.append("حقيقة: يمكن للعميل تمديد صلاحية حسابه. كل ضغطة تمدد الحساب ليوم واحد مجاناً.")
+                        notes.append("حقيقة هامة: الحد الأقصى المسموح به لعدد أيام التمديد هو 3 أيام فقط ولا يمكن تجاوزه.")
+                        notes.append("تعليمات لك: أخبر العميل أنه يمكنه طلب تمديد الصلاحية، ووضّح له أنه إذا كان اشتراكه منتهياً منذ عدة أيام، سيحتاج لتكرار العملية لتغطية الأيام الفائتة (بحد أقصى 3 مرات).")
+                        notes.append('[ACTION_BUTTON: {"text": "تأكيد التمديد (مجاني)", "callback_data": "req_extend_bill"}]')
+                    elif val == 27:
+                        notes.append("حقيقة: يمكن للعميل تمديد صلاحية حسابه بتكلفة 27 ل.س لكل يوم إضافي يتم تمديده.")
+                        notes.append("حقيقة هامة: الحد الأقصى المسموح به لعدد أيام التمديد هو 3 أيام فقط ولا يمكن تجاوزه.")
+                        notes.append("تعليمات لك: أخبر العميل أنه يمكنه التمديد بتكلفة 27 ليرة سورية، ووضّح أنه يحتاج تكرار العملية إذا كان متأخراً أكثر من يوم (بحد أقصى 3 مرات).")
+                        notes.append('[ACTION_BUTTON: {"text": "تأكيد التمديد (27 ل.س)", "callback_data": "req_extend_bill"}]')
+                    elif val == -1 or val == "-1":
+                        notes.append("حقيقة: لقد استنفد العميل الحد الأقصى لأيام التمديد (3 أيام). لا يمكنه التمديد أكثر.")
+                        notes.append("تعليمات لك: اعتذر من العميل وأخبره أنه استنفد الحد الأقصى المسموح به للتمديد (3 أيام) ولا يمكن تمديد الصلاحية أكثر.")
+                    else:
+                        notes.append(f"حقيقة: حالة التمديد غير معروفة ({val}). يرجى طلب التواصل مع الدعم الفني.")
+                        
+                    return {"success": True, "data": {"extend_bill_value": val, "ai_business_logic_notes": notes}}
+                else:
+                    return {"success": False, "error": "Failed to fetch extend status"}
+                    
             else:
                 return {"success": False, "error": f"Tool {tool_name} is not implemented yet in ToolExecutor."}
         except Exception as e:
