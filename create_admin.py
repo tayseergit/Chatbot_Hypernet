@@ -47,12 +47,12 @@ def list_admins():
 
 def main():
     parser = argparse.ArgumentParser(description="إدارة حسابات مدراء لوحة تحكم هايبرنت")
-    parser.add_argument("--list", action="store_true", help="عرض قائمة المدراء الحاليين")
-    parser.add_argument("--username", type=str, help="اسم المستخدم")
-    parser.add_argument("--password", type=str, help="كلمة المرور")
-    parser.add_argument("--name", type=str, default="", help="الاسم الكامل")
-    parser.add_argument("--email", type=str, default=None, help="البريد الإلكتروني")
-    parser.add_argument("--role", type=str, default="admin", choices=["super_admin", "admin", "operator"], help="الدور الصلاحياتي")
+    parser.add_argument("-l", "--list", action="store_true", help="عرض قائمة المدراء الحاليين")
+    parser.add_argument("-u", "--username", type=str, help="اسم المستخدم")
+    parser.add_argument("-p", "--password", type=str, help="كلمة المرور")
+    parser.add_argument("-n", "--name", type=str, default="", help="الاسم الكامل")
+    parser.add_argument("-e", "--email", type=str, default=None, help="البريد الإلكتروني")
+    parser.add_argument("-r", "--role", type=str, default="admin", choices=["super_admin", "admin", "operator"], help="الدور الصلاحياتي")
 
     args = parser.parse_args()
 
