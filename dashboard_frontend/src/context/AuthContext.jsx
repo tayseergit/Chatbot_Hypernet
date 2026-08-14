@@ -17,17 +17,18 @@ export function AuthProvider({ children }) {
     }
   });
   const [expiresAt, setExpiresAt] = useState(() => localStorage.getItem(EXPIRES_KEY) || null);
-  const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const [remainingSeconds, setRemainingSeconds] = useState(3600);
   const [isLoading, setIsLoading] = useState(true);
 
   // Global Logout
   const logout = useCallback(async (notifyServer = true) => {
-    if (notifyServer && token) {
+    const currentToken = token || localStorage.getItem(TOKEN_KEY);
+    if (notifyServer && currentToken) {
       try {
         await fetch('/api/auth/logout', {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${token}`
+            'Authorization': `Bearer ${currentToken}`
           }
         });
       } catch (err) {
@@ -59,7 +60,7 @@ export function AuthProvider({ children }) {
         if (!res.ok) {
           throw new Error(
             res.status === 404
-              ? 'تعذر الوصول للـ API (404). يرجى التأكد من تشغيل سيرفر الباك إند (Port 8000) وإعادة تشغيل الواجهة.'
+              ? 'تعذر الوصول للـ API (404). يرجى التأكد من تشغيل سيرفر الباك إند (Port 8000).'
               : `خطأ في استجابة الخادم (${res.status})`
           );
         }
@@ -71,15 +72,18 @@ export function AuthProvider({ children }) {
 
       const accessToken = data.access_token;
       const adminUser = data.admin;
-      const expAt = data.expires_at;
+      const expiresInSec = data.expires_in || 3600;
+      // Calculate absolute expiry epoch in milliseconds
+      const expEpochMs = Date.now() + expiresInSec * 1000;
 
       localStorage.setItem(TOKEN_KEY, accessToken);
       localStorage.setItem(ADMIN_KEY, JSON.stringify(adminUser));
-      localStorage.setItem(EXPIRES_KEY, expAt);
+      localStorage.setItem(EXPIRES_KEY, String(expEpochMs));
 
       setToken(accessToken);
       setAdmin(adminUser);
-      setExpiresAt(expAt);
+      setExpiresAt(String(expEpochMs));
+      setRemainingSeconds(expiresInSec);
 
       return adminUser;
     } catch (err) {
@@ -115,6 +119,7 @@ export function AuthProvider({ children }) {
         localStorage.removeItem(EXPIRES_KEY);
         setToken(null);
         setAdmin(null);
+        setExpiresAt(null);
       }
 
       return response;
@@ -127,20 +132,24 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  // Timer countdown for active 60-minute session
+  // Timer countdown for active 60-minute session based on Epoch timestamp
   useEffect(() => {
     if (!expiresAt || !token) {
       setRemainingSeconds(0);
       return;
     }
 
+    const expTime = parseInt(expiresAt, 10);
+    if (!expTime || isNaN(expTime)) {
+      return;
+    }
+
     const updateTimer = () => {
-      const expTime = new Date(expiresAt).getTime();
-      const now = new Date().getTime();
+      const now = Date.now();
       const diffSec = Math.max(0, Math.floor((expTime - now) / 1000));
       setRemainingSeconds(diffSec);
 
-      if (diffSec <= 0 && token) {
+      if (diffSec <= 0) {
         console.warn('[AUTH] Session timed out (1 hour passed).');
         logout(false);
       }
