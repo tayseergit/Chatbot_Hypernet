@@ -1,10 +1,11 @@
 """
 FastAPI REST Server connecting Backend Database & Services to React Frontend Dashboard
 """
-from fastapi import FastAPI, Query, HTTPException, UploadFile, File
+from fastapi import FastAPI, Query, HTTPException, UploadFile, File, Depends, Request
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import datetime
@@ -22,8 +23,43 @@ from backend_service.core.database import SessionLocal
 from backend_service.core.models.action_log import AgentActionLog
 from backend_service.core.models.session import Session as SessionModel
 from backend_service.core.models.message import Message as MessageModel
+from backend_service.core.models.admin import DashboardAdmin
+from backend_service.core.services.admin_auth_service import AdminAuthService
+from backend_service.core.security import decode_access_token
 
 app = FastAPI(title="Hypernet Enterprise AI Backend API", version="1.0.0")
+
+# Security and Auth Service
+admin_auth_service = AdminAuthService()
+try:
+    admin_auth_service.seed_default_admin_if_empty()
+except Exception as ex:
+    print(f"Admin auth service initialization note: {ex}")
+
+security_scheme = HTTPBearer(auto_error=False)
+
+
+def get_current_admin(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
+) -> DashboardAdmin:
+    """FastAPI Dependency: Enforce valid JWT and non-revoked DB session."""
+    if not credentials or not credentials.credentials:
+        raise HTTPException(
+            status_code=401,
+            detail="غير مصرح: يرجى تسجيل الدخول إلى لوحة التحكم.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token = credentials.credentials
+    admin = admin_auth_service.validate_token_and_session(token)
+    if not admin:
+        raise HTTPException(
+            status_code=401,
+            detail="انتهت صلاحية الجلسة أو تم تسجيل الخروج. يرجى تسجيل الدخول مجدداً.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return admin
+
 
 # Mount media directory for user-uploaded photos
 os.makedirs("media/user_photos", exist_ok=True)
@@ -54,21 +90,35 @@ except Exception as e:
     print(f"RAGService initialization note: {e}")
 
 # --- Request Models ---
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
 class ChatRequest(BaseModel):
     session_id: str
     customer_id: Optional[str] = "C001"
     prompt: str
 
+
 class RAGSearchRequest(BaseModel):
     query: str
+
 
 class PermissionUpdateRequest(BaseModel):
     is_enabled: bool
     updated_by: Optional[str] = "dashboard_admin"
 
+
 class EmergencyStopRequest(BaseModel):
     activate: bool  # True = stop, False = resume
     updated_by: Optional[str] = "dashboard_admin"
+
 
 class BroadcastRequest(BaseModel):
     target: str = "ALL"  # "ALL", "AUTHED", "UNAUTHED", "CUSTOM"
@@ -77,7 +127,68 @@ class BroadcastRequest(BaseModel):
     message: str
     sent_by: Optional[str] = "Admin"
 
-# --- Endpoints ---
+
+# --- Authentication Endpoints ---
+
+@app.post("/api/auth/login")
+def admin_login(req: LoginRequest, request: Request):
+    """Authenticate admin, enforce brute-force lock, issue 1-hour JWT token."""
+    ip_addr = request.client.host if request.client else "127.0.0.1"
+    user_agent = request.headers.get("user-agent", "Unknown")
+    success, msg, data = admin_auth_service.authenticate_admin(
+        username=req.username,
+        password=req.password,
+        ip_address=ip_addr,
+        user_agent=user_agent,
+    )
+    if not success:
+        raise HTTPException(status_code=401, detail=msg)
+    return data
+
+
+@app.post("/api/auth/logout")
+def admin_logout(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
+    current_admin: DashboardAdmin = Depends(get_current_admin),
+):
+    """Invalidate current admin session in MySQL."""
+    if credentials and credentials.credentials:
+        payload = decode_access_token(credentials.credentials)
+        if payload and "jti" in payload:
+            admin_auth_service.revoke_session(payload["jti"])
+    return {"status": "success", "message": "تم تسجيل الخروج بنجاح"}
+
+
+@app.get("/api/auth/me")
+def admin_me(current_admin: DashboardAdmin = Depends(get_current_admin)):
+    """Get current logged-in admin profile and permissions."""
+    return {
+        "id": current_admin.id,
+        "username": current_admin.username,
+        "full_name": current_admin.full_name,
+        "email": current_admin.email,
+        "role": current_admin.role,
+        "last_login_at": current_admin.last_login_at.isoformat() if current_admin.last_login_at else None,
+    }
+
+
+@app.post("/api/auth/change-password")
+def change_password(
+    req: ChangePasswordRequest,
+    current_admin: DashboardAdmin = Depends(get_current_admin),
+):
+    """Change admin password securely."""
+    success, msg = admin_auth_service.change_password(
+        admin_id=current_admin.id,
+        current_password=req.current_password,
+        new_password=req.new_password,
+    )
+    if not success:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"status": "success", "message": msg}
+
+
+# --- Public / Monitored Endpoints ---
 
 @app.get("/api/health")
 def health_check():
@@ -91,8 +202,11 @@ def health_check():
         }
     }
 
+
+# --- Protected Dashboard Endpoints ---
+
 @app.get("/api/overview/stats")
-def get_overview_stats():
+def get_overview_stats(current_admin: DashboardAdmin = Depends(get_current_admin)):
     db = SessionLocal()
     try:
         total_sessions = db.query(SessionModel).count()
@@ -117,7 +231,7 @@ def get_overview_stats():
     }
 
 @app.get("/api/analytics/summary")
-def get_analytics_summary():
+def get_analytics_summary(current_admin: DashboardAdmin = Depends(get_current_admin)):
     db = SessionLocal()
     try:
         total_sessions = db.query(SessionModel).count()
@@ -203,7 +317,8 @@ def get_action_logs(
     action_type: str = Query("ALL"),
     status: str = Query("ALL"),
     search: Optional[str] = None,
-    limit: int = Query(100)
+    limit: int = Query(100),
+    current_admin: DashboardAdmin = Depends(get_current_admin)
 ):
     logs = backend_container.action_log_service.get_all_actions(
         limit=limit,
@@ -268,7 +383,10 @@ def get_action_logs(
     return result
 
 @app.get("/api/sessions")
-def get_sessions(limit: int = Query(20)):
+def get_sessions(
+    limit: int = Query(20),
+    current_admin: DashboardAdmin = Depends(get_current_admin)
+):
     sessions = backend_container.session_service.get_all_sessions(limit=limit)
     result = []
     for s in sessions:
@@ -287,7 +405,10 @@ def get_sessions(limit: int = Query(20)):
     return result
 
 @app.get("/api/sessions/{session_id}/messages")
-def get_session_messages(session_id: str):
+def get_session_messages(
+    session_id: str,
+    current_admin: DashboardAdmin = Depends(get_current_admin)
+):
     history = backend_container.message_service.load_history(session_id=session_id, limit=50)
     return [
         {
@@ -303,7 +424,11 @@ class ManualReplyRequest(BaseModel):
     admin_name: Optional[str] = "فريق الدعم الفني"
 
 @app.post("/api/sessions/{session_id}/reply")
-def send_manual_reply(session_id: str, body: ManualReplyRequest):
+def send_manual_reply(
+    session_id: str,
+    body: ManualReplyRequest,
+    current_admin: DashboardAdmin = Depends(get_current_admin)
+):
     text = body.message.strip()
     if not text:
         raise HTTPException(status_code=400, detail="لا يمكن إرسال رسالة فارغة")
@@ -339,7 +464,10 @@ def send_manual_reply(session_id: str, body: ManualReplyRequest):
     }
 
 @app.delete("/api/sessions/{session_id}")
-def delete_session(session_id: str):
+def delete_session(
+    session_id: str,
+    current_admin: DashboardAdmin = Depends(get_current_admin)
+):
     db = SessionLocal()
     try:
         db.query(MessageModel).filter(MessageModel.session_id == session_id).delete()
@@ -354,7 +482,7 @@ def delete_session(session_id: str):
         db.close()
 
 @app.get("/api/crm/customers")
-def get_crm_customers():
+def get_crm_customers(current_admin: DashboardAdmin = Depends(get_current_admin)):
     db = SessionLocal()
     try:
         sessions = db.query(SessionModel).order_by(SessionModel.created_at.desc()).all()
@@ -381,11 +509,11 @@ def get_crm_customers():
         db.close()
 
 @app.get("/api/rag/stats")
-def get_rag_stats():
+def get_rag_stats(current_admin: DashboardAdmin = Depends(get_current_admin)):
     return rag_service.get_stats()
 
 @app.post("/api/rag/reindex")
-def reindex_rag():
+def reindex_rag(current_admin: DashboardAdmin = Depends(get_current_admin)):
     try:
         res = rag_service.reindex()
         return res
@@ -393,7 +521,10 @@ def reindex_rag():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/rag/search")
-def search_rag(req: RAGSearchRequest):
+def search_rag(
+    req: RAGSearchRequest,
+    current_admin: DashboardAdmin = Depends(get_current_admin)
+):
     try:
         result = rag_service.query(question=req.query)
         if result.success and result.data:
@@ -419,7 +550,10 @@ def search_rag(req: RAGSearchRequest):
         }
 
 @app.post("/api/chat/interact")
-def chat_interact(req: ChatRequest):
+def chat_interact(
+    req: ChatRequest,
+    current_admin: DashboardAdmin = Depends(get_current_admin)
+):
     """
     Route live chat prompt through ChatbotFacade & log action in DB
     """
@@ -431,7 +565,6 @@ def chat_interact(req: ChatRequest):
         )
         text = response_obj.text if hasattr(response_obj, 'text') else str(response_obj)
     except Exception as e:
-        logger.error(f"Error in chat_interact: {e}")
         text = f"حدث خطأ أثناء معالجة الطلب: {e}"
 
     return {
@@ -440,17 +573,12 @@ def chat_interact(req: ChatRequest):
         "status": "SUCCESS"
     }
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-
-
 # ═══════════════════════════════════════════════════════════════════════════
 # PERMISSIONS API — Agent Capability Control
 # ═══════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/permissions")
-def get_permissions():
+def get_permissions(current_admin: DashboardAdmin = Depends(get_current_admin)):
     """
     List all agent permissions with their current enabled/disabled state.
     Used by the dashboard Permissions tab.
@@ -462,7 +590,11 @@ def get_permissions():
 
 
 @app.put("/api/permissions/{tool_name}")
-def update_permission(tool_name: str, req: PermissionUpdateRequest):
+def update_permission(
+    tool_name: str,
+    req: PermissionUpdateRequest,
+    current_admin: DashboardAdmin = Depends(get_current_admin)
+):
     """
     Enable or disable a specific agent tool/capability.
     Changes take effect within 30 seconds (cache TTL).
@@ -490,7 +622,10 @@ def update_permission(tool_name: str, req: PermissionUpdateRequest):
 
 
 @app.post("/api/permissions/emergency-stop")
-def emergency_stop(req: EmergencyStopRequest):
+def emergency_stop(
+    req: EmergencyStopRequest,
+    current_admin: DashboardAdmin = Depends(get_current_admin)
+):
     """
     EMERGENCY STOP — immediately activates or deactivates the global agent kill switch.
 
@@ -499,30 +634,30 @@ def emergency_stop(req: EmergencyStopRequest):
     """
     if req.activate:
         backend_container.permission_service.activate_emergency_stop(
-            updated_by=req.updated_by
+            updated_by=current_admin.username
         )
         return {
             "emergency_stop": True,
             "status": "ACTIVATED",
             "message": "EMERGENCY STOP ACTIVATED — All agent capabilities are now BLOCKED.",
-            "updated_by": req.updated_by,
+            "updated_by": current_admin.username,
             "timestamp": datetime.datetime.utcnow().isoformat(),
         }
     else:
         backend_container.permission_service.deactivate_emergency_stop(
-            updated_by=req.updated_by
+            updated_by=current_admin.username
         )
         return {
             "emergency_stop": False,
             "status": "DEACTIVATED",
             "message": "Emergency stop deactivated — Agent resuming normal operation.",
-            "updated_by": req.updated_by,
+            "updated_by": current_admin.username,
             "timestamp": datetime.datetime.utcnow().isoformat(),
         }
 
 
 @app.post("/api/permissions/seed")
-def seed_permissions():
+def seed_permissions(current_admin: DashboardAdmin = Depends(get_current_admin)):
     """
     Seed default permissions into the database.
     Safe to call multiple times — only inserts missing entries.
@@ -541,9 +676,9 @@ def seed_permissions():
 import requests
 
 @app.get("/api/notifications/subscribers")
-def get_subscribers():
+def get_subscribers(current_admin: DashboardAdmin = Depends(get_current_admin)):
     """
-    Get all registered bot subscribers from SQLite database with status.
+    Get all registered bot subscribers from MySQL database with status.
     """
     db = SessionLocal()
     try:
@@ -572,7 +707,10 @@ def get_subscribers():
 
 
 @app.get("/api/notifications/history")
-def get_broadcast_history(limit: int = 50):
+def get_broadcast_history(
+    limit: int = 50,
+    current_admin: DashboardAdmin = Depends(get_current_admin)
+):
     """
     Get history of all broadcast campaigns sent through the dashboard.
     """
@@ -620,7 +758,10 @@ def get_broadcast_history(limit: int = 50):
 
 
 @app.post("/api/notifications/broadcast")
-def send_broadcast(req: BroadcastRequest):
+def send_broadcast(
+    req: BroadcastRequest,
+    current_admin: DashboardAdmin = Depends(get_current_admin)
+):
     """
     Send a broadcast notification to bot users via Telegram API and log the event.
     """
@@ -650,13 +791,11 @@ def send_broadcast(req: BroadcastRequest):
         
         for sess in target_sessions:
             chat_id = sess.session_id
-            # Clean up prefix if any, e.g. "tg_12345" -> "12345"
             raw_chat_id = chat_id.replace("tg_", "") if chat_id.startswith("tg_") else chat_id
             
             delivered = False
             error_reason = None
             
-            # If valid numeric chat_id and token present, send via Telegram Bot API
             if token and raw_chat_id.isdigit():
                 try:
                     resp = requests.post(
@@ -679,7 +818,6 @@ def send_broadcast(req: BroadcastRequest):
                     error_reason = str(ex)
                     failed_count += 1
             else:
-                # If mock/simulated session (non-numeric or no token)
                 delivered = True
                 sent_count += 1
                 error_reason = "Simulated delivery (Mock User)"
@@ -691,7 +829,6 @@ def send_broadcast(req: BroadcastRequest):
                 "reason": error_reason
             })
 
-        # Save action log in DB
         action_status = "SUCCESS" if (sent_count > 0 or len(target_sessions) == 0) else "FAILED"
         if failed_count > 0 and sent_count > 0:
             action_status = "PARTIAL"
@@ -707,7 +844,7 @@ def send_broadcast(req: BroadcastRequest):
                 "title": req.title,
                 "message": req.message,
                 "target_count": len(target_sessions),
-                "sent_by": req.sent_by,
+                "sent_by": current_admin.username,
                 "custom_recipients": req.user_ids if req.target == "CUSTOM" else None
             },
             status=action_status,
@@ -749,7 +886,11 @@ class QARequest(BaseModel):
     answer: str
 
 @app.get("/api/rag/qa")
-def get_all_qa(search: Optional[str] = None, category: Optional[str] = None):
+def get_all_qa(
+    search: Optional[str] = None,
+    category: Optional[str] = None,
+    current_admin: DashboardAdmin = Depends(get_current_admin)
+):
     """List all Q&A items with optional search & filter."""
     items = rag_service.get_all_qa()
     if category and category != "ALL":
@@ -766,7 +907,10 @@ def get_all_qa(search: Optional[str] = None, category: Optional[str] = None):
     }
 
 @app.post("/api/rag/qa")
-def add_qa_item(body: QARequest):
+def add_qa_item(
+    body: QARequest,
+    current_admin: DashboardAdmin = Depends(get_current_admin)
+):
     """Add a new Q&A entry into Excel and hot-reload in memory."""
     cat = body.category.strip() or "general"
     q = body.question.strip()
@@ -780,7 +924,11 @@ def add_qa_item(body: QARequest):
     return {"status": "success", "message": "تمت إضافة السؤال وتحديث المعرفة بنجاح"}
 
 @app.put("/api/rag/qa/{item_id}")
-def update_qa_item(item_id: int, body: QARequest):
+def update_qa_item(
+    item_id: int,
+    body: QARequest,
+    current_admin: DashboardAdmin = Depends(get_current_admin)
+):
     """Update an existing Q&A item in Excel and hot-reload in memory."""
     cat = body.category.strip() or "general"
     q = body.question.strip()
@@ -794,7 +942,10 @@ def update_qa_item(item_id: int, body: QARequest):
     return {"status": "success", "message": "تم تعديل السؤال وتحديث الفهرس بنجاح"}
 
 @app.delete("/api/rag/qa/{item_id}")
-def delete_qa_item(item_id: int):
+def delete_qa_item(
+    item_id: int,
+    current_admin: DashboardAdmin = Depends(get_current_admin)
+):
     """Delete a Q&A item from Excel and hot-reload in memory."""
     success = rag_service.delete_qa(item_id)
     if not success:
@@ -802,12 +953,15 @@ def delete_qa_item(item_id: int):
     return {"status": "success", "message": "تم حذف السؤال وتحديث الفهرس بنجاح"}
 
 @app.get("/api/rag/company-info")
-def get_company_info():
+def get_company_info(current_admin: DashboardAdmin = Depends(get_current_admin)):
     """Get structured company packages, topups, services, and contacts."""
     return rag_service.get_company_info_data()
 
 @app.put("/api/rag/company-info")
-def update_company_info(data: Dict[str, Any]):
+def update_company_info(
+    data: Dict[str, Any],
+    current_admin: DashboardAdmin = Depends(get_current_admin)
+):
     """Update company_info.json and hot-reload in memory."""
     success = rag_service.save_company_info_data(data)
     if not success:
@@ -815,12 +969,15 @@ def update_company_info(data: Dict[str, Any]):
     return {"status": "success", "message": "تم حفظ الباقات وبيانات الشركة وتحديث البوت فوراً"}
 
 @app.get("/api/rag/pdfs")
-def get_pdf_guides():
+def get_pdf_guides(current_admin: DashboardAdmin = Depends(get_current_admin)):
     """List all router PDF guides with page counts and file sizes."""
     return rag_service.get_pdf_list()
 
 @app.post("/api/rag/pdfs/upload")
-async def upload_pdf_guide(file: UploadFile = File(...)):
+async def upload_pdf_guide(
+    file: UploadFile = File(...),
+    current_admin: DashboardAdmin = Depends(get_current_admin)
+):
     """Upload a new PDF router setup guide, parse text, and hot-reload."""
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="يجب رفع ملف بصيغة PDF فقط")
@@ -838,7 +995,10 @@ async def upload_pdf_guide(file: UploadFile = File(...)):
     return {"status": "success", "message": f"تم رفع ملف {file.filename} وفهرسته بنجاح"}
 
 @app.delete("/api/rag/pdfs/{filename}")
-def delete_pdf_guide(filename: str):
+def delete_pdf_guide(
+    filename: str,
+    current_admin: DashboardAdmin = Depends(get_current_admin)
+):
     """Delete a PDF router guide and hot-reload."""
     success = rag_service.delete_pdf_file(filename)
     if not success:
@@ -846,12 +1006,21 @@ def delete_pdf_guide(filename: str):
     return {"status": "success", "message": f"تم حذف الكتيب {filename} وتحديث الفهرس"}
 
 @app.get("/api/rag/pdfs/download/{filename}")
-def download_pdf_guide(filename: str):
+def download_pdf_guide(
+    filename: str,
+    current_admin: DashboardAdmin = Depends(get_current_admin)
+):
     """Download/view a PDF guide."""
     pdfs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "resources", "pdfs")
     target_path = os.path.join(pdfs_dir, os.path.basename(filename))
     if not os.path.exists(target_path):
         raise HTTPException(status_code=404, detail="الملف غير موجود")
     return FileResponse(target_path, media_type="application/pdf", filename=filename)
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
 
 

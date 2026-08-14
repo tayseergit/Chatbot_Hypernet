@@ -1,4 +1,5 @@
 import React from 'react';
+import { useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard,
   FileText,
@@ -11,6 +12,9 @@ import {
   Wifi,
   ShieldCheck,
   Megaphone,
+  LogOut,
+  Timer,
+  KeyRound,
 } from 'lucide-react';
 
 const sections = [
@@ -36,6 +40,27 @@ const sections = [
 ];
 
 export default function Sidebar({ activeTab, setActiveTab }) {
+  const { admin, logout, remainingFormatted } = useAuth();
+
+  const getRoleLabel = (role) => {
+    switch (role) {
+      case 'super_admin': return 'مدير عام النظام';
+      case 'admin':       return 'مدير النظام';
+      case 'operator':    return 'مشغّل لوحة التحكم';
+      default:            return 'مسؤول معتمد';
+    }
+  };
+
+  const getInitial = () => {
+    if (admin?.full_name && admin.full_name.trim().length > 0) {
+      return admin.full_name.trim().charAt(0).toUpperCase();
+    }
+    if (admin?.username) {
+      return admin.username.charAt(0).toUpperCase();
+    }
+    return 'A';
+  };
+
   return (
     <aside className="hcn-sidebar">
       {/* Brand Header */}
@@ -46,56 +71,119 @@ export default function Sidebar({ activeTab, setActiveTab }) {
         gap: 12,
       }}>
         <div style={{
-          width: 32,
-          height: 32,
-          borderRadius: 8,
-          background: 'var(--primary)',
+          width: 34,
+          height: 34,
+          borderRadius: 10,
+          background: 'linear-gradient(135deg, #00A76F 0%, #007850 100%)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           flexShrink: 0,
+          boxShadow: '0 4px 12px rgba(0, 167, 111, 0.35)',
         }}>
-          <Wifi size={18} color="#fff" />
+          <Wifi size={19} color="#fff" />
         </div>
         <div>
           <div style={{
-            fontWeight: 700,
+            fontWeight: 800,
             fontSize: 16,
             color: 'var(--text-primary)',
             letterSpacing: '1px',
           }}>
             HYPERNET
           </div>
+          <div style={{ fontSize: 11, color: 'var(--sidebar-text)', fontWeight: 600 }}>
+            بوابة الإدارة المركزية
+          </div>
         </div>
       </div>
 
-      {/* User Profile Card */}
-      <div style={{ padding: '0 20px 24px' }}>
+      {/* Authenticated Admin Profile Card */}
+      <div style={{ padding: '0 20px 20px' }}>
         <div style={{
-          background: 'rgba(145, 158, 171, 0.12)',
-          borderRadius: 12,
-          padding: '16px',
+          background: 'rgba(145, 158, 171, 0.08)',
+          border: '1px solid rgba(255, 255, 255, 0.05)',
+          borderRadius: 14,
+          padding: '14px',
           display: 'flex',
-          alignItems: 'center',
-          gap: 16,
+          flexDirection: 'column',
+          gap: 12,
         }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{
+              width: 38,
+              height: 38,
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #00A76F 0%, #0284c7 100%)',
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: 'bold',
+              fontSize: 15,
+              flexShrink: 0,
+            }}>
+              {getInitial()}
+            </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{
+                color: 'var(--text-primary)',
+                fontSize: 13,
+                fontWeight: 700,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}>
+                {admin?.full_name || admin?.username || 'مدير النظام'}
+              </div>
+              <div style={{
+                color: '#38bdf8',
+                fontSize: 11,
+                fontWeight: 600,
+              }}>
+                {getRoleLabel(admin?.role)}
+              </div>
+            </div>
+          </div>
+
+          {/* Session Timer & Security Badge */}
           <div style={{
-            width: 40,
-            height: 40,
-            borderRadius: '50%',
-            background: 'var(--primary)',
-            color: '#fff',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            fontWeight: 'bold',
-            fontSize: 16,
+            justifyContent: 'space-between',
+            paddingTop: 8,
+            borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+            fontSize: 11,
+            color: 'var(--sidebar-text)',
           }}>
-            A
-          </div>
-          <div>
-            <div style={{ color: 'var(--text-primary)', fontSize: 14, fontWeight: 700 }}>Admin</div>
-            <div style={{ color: 'var(--sidebar-text)', fontSize: 12 }}>admin@hypernet.sy</div>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#fbbf24', fontWeight: 600 }}>
+              <Timer size={12} />
+              الجلسة: {remainingFormatted}
+            </span>
+            <button
+              onClick={() => logout(true)}
+              title="تسجيل الخروج الآمن"
+              style={{
+                background: 'rgba(239, 68, 68, 0.1)',
+                color: '#f87171',
+                border: '1px solid rgba(239, 68, 68, 0.25)',
+                borderRadius: 6,
+                padding: '3px 8px',
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                fontFamily: 'inherit',
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'}
+            >
+              <LogOut size={12} />
+              خروج
+            </button>
           </div>
         </div>
       </div>
@@ -169,10 +257,10 @@ export default function Sidebar({ activeTab, setActiveTab }) {
           gap: 12,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ color: 'var(--sidebar-text)', fontSize: 13, fontWeight: 500 }}>System API</span>
+            <span style={{ color: 'var(--sidebar-text)', fontSize: 13, fontWeight: 500 }}>اتصال الـ API</span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--primary)', fontWeight: 600, fontSize: 12 }}>
               <span className="hcn-dot hcn-dot-green hcn-dot-pulse" style={{ width: 6, height: 6 }} />
-              Online
+              مشفر وآمن
             </span>
           </div>
         </div>

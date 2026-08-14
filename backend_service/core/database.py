@@ -37,7 +37,7 @@ except Exception as e:
     logger.error(f"Failed to connect to MySQL database '{DB_NAME}' at {DB_HOST}:{DB_PORT}: {e}")
     raise e
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
 Base = declarative_base()
 
 def init_db(drop_all: bool = False):
