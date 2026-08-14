@@ -5,6 +5,7 @@ Automatically captures function name, sanitized arguments, and return status.
 """
 
 import functools
+import time
 from typing import Optional
 
 from application.monitoring.logger import AppLogger
@@ -32,7 +33,7 @@ def log_operation(
             func_name = f"{func.__qualname__}"
 
             # Build log entry
-            entry_msg = f"▶ {func_name}"
+            entry_msg = f"[+] {func_name}"
             if log_args:
                 # Sanitize args — skip 'self' for methods
                 safe_args = args[1:] if args and hasattr(args[0], func.__name__) else args
@@ -44,11 +45,13 @@ def log_operation(
                     entry_msg += f" | args={_truncate(str(safe_args))} kwargs={_truncate(str(safe_kwargs))}"
 
             logger.info(entry_msg)
+            t0 = time.time()
 
             try:
                 result = func(*args, **kwargs)
+                t_ms = (time.time() - t0) * 1000
 
-                exit_msg = f"◀ {func_name} [OK]"
+                exit_msg = f"[-] {func_name} [OK] [{t_ms:.2f}ms]"
                 if log_result and result is not None:
                     exit_msg += f" | result={_truncate(str(result))}"
                 logger.info(exit_msg)
@@ -56,7 +59,7 @@ def log_operation(
                 return result
 
             except Exception as e:
-                logger.error(f"✖ {func_name} [ERROR] | {type(e).__name__}: {e}")
+                logger.error(f"[X] {func_name} [ERROR] | {type(e).__name__}: {e}")
                 raise
 
         return wrapper

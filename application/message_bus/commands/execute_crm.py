@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 @dataclass
 class ExecuteCRMCommand:
     """
-    Command to trigger a CRM operation via MCP.
+    Command to trigger a CRM operation.
 
     Dispatched by the Facade to the CRM service.
     """
