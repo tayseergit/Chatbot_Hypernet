@@ -24,17 +24,14 @@ class WorkflowCoordinator:
         self._gate = permission_gate  # Layer 2 enforcement — may be None during legacy startup
         self._logger = AppLogger.get_logger("workflow_coordinator")
 
-<<<<<<< HEAD
-    def execute_workflow(self, decision: AgentDecision, message_text: str, history: str = "", image_bytes: bytes = None) -> Dict[str, Any]:
-        """Execute required services and gather results to generate an LLM response."""
-=======
     def execute_workflow(
         self,
         decision: AgentDecision,
         message_text: str,
+        history: str = "",
+        image_bytes: bytes = None,
         session_id: str = None,
         customer_id: str = None,
-        history: str = None,
     ) -> Dict[str, Any]:
         """Execute required services and gather results to generate an LLM response.
 
@@ -42,7 +39,6 @@ class WorkflowCoordinator:
             PermissionDeniedException: if any required service/tool is blocked
             AgentEmergencyStopException: if the global emergency stop is active
         """
->>>>>>> c78e952 (feat: add dashboard frontend, permissions system, action logs, and new database setup)
         requires = decision.requires
         self._logger.info(f"Executing workflow for intent '{decision.intent}', requiring: {requires}")
 

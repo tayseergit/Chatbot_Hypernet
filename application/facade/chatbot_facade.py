@@ -197,7 +197,6 @@ class ChatbotFacade:
                 image_bytes=image_bytes,
                 session_id=session.session_id,
                 customer_id=session.customer_id,
-                history=history_text,
             )
 
             t_workflow = (time.time() - t2) * 1000
