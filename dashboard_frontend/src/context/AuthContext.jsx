@@ -45,30 +45,49 @@ export function AuthProvider({ children }) {
 
   // Global Login
   const login = async (username, password) => {
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
-    });
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
 
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.detail || 'فشل تسجيل الدخول. يرجى التحقق من البيانات.');
+      let data = {};
+      try {
+        data = await res.json();
+      } catch {
+        if (!res.ok) {
+          throw new Error(
+            res.status === 404
+              ? 'تعذر الوصول للـ API (404). يرجى التأكد من تشغيل سيرفر الباك إند (Port 8000) وإعادة تشغيل الواجهة.'
+              : `خطأ في استجابة الخادم (${res.status})`
+          );
+        }
+      }
+
+      if (!res.ok) {
+        throw new Error(data.detail || 'فشل تسجيل الدخول. يرجى التحقق من اسم المستخدم وكلمة المرور.');
+      }
+
+      const accessToken = data.access_token;
+      const adminUser = data.admin;
+      const expAt = data.expires_at;
+
+      localStorage.setItem(TOKEN_KEY, accessToken);
+      localStorage.setItem(ADMIN_KEY, JSON.stringify(adminUser));
+      localStorage.setItem(EXPIRES_KEY, expAt);
+
+      setToken(accessToken);
+      setAdmin(adminUser);
+      setExpiresAt(expAt);
+
+      return adminUser;
+    } catch (err) {
+      if (err.name === 'TypeError' && err.message && err.message.toLowerCase().includes('fetch')) {
+        throw new Error('تعذر الاتصال بسيرفر الباك إند (Port 8000). يرجى التأكد من تشغيله.');
+      }
+      throw err;
     }
-
-    const accessToken = data.access_token;
-    const adminUser = data.admin;
-    const expAt = data.expires_at;
-
-    localStorage.setItem(TOKEN_KEY, accessToken);
-    localStorage.setItem(ADMIN_KEY, JSON.stringify(adminUser));
-    localStorage.setItem(EXPIRES_KEY, expAt);
-
-    setToken(accessToken);
-    setAdmin(adminUser);
-    setExpiresAt(expAt);
-
-    return adminUser;
   };
 
   // Setup Global Fetch Interceptor to attach Bearer Token automatically to all /api/ calls
@@ -132,7 +151,7 @@ export function AuthProvider({ children }) {
     return () => clearInterval(interval);
   }, [expiresAt, token, logout]);
 
-  // Formatted countdown string (e.g. "58:30 دقيقة")
+  // Formatted countdown string (e.g. "58:30")
   const formatRemainingTime = () => {
     const mins = Math.floor(remainingSeconds / 60);
     const secs = remainingSeconds % 60;
