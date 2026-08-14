@@ -1,160 +1,274 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
-  Search, Plus, Filter, MoreVertical, ChevronLeft, ChevronRight,
-  User, Pencil, Wifi, Monitor, FileText, History, X,
-  ShieldCheck, Phone, MapPin, Plug, Trash2, Package,
-  CreditCard, Settings, Clock, RefreshCw, CheckCircle2,
+  Search, Filter, ChevronLeft, ChevronRight, X,
+  User, CheckCircle2, MoreVertical, MessageSquare, ShieldAlert,
+  Clock, MapPin, RefreshCw, Trash2, LogOut, Send, Image as ImageIcon, ZoomIn, ExternalLink
 } from 'lucide-react';
 
-/* ─────────────── بيانات العملاء ─────────────── */
-const CUSTOMERS = [
-  {
-    id: 'C001', username: 'ahmed.m@hypernet.iq', firstName: 'Ahmed', lastName: 'Mohamed',
-    phone: '+964 770 123 4567', address: 'الكرادة، بغداد', notes: '',
-    status: 'active', statusColor: 'var(--success)',
-    plan: 'Gold 50Mbps Fiber', planPrice: 45000, userType: 'Fiber Access Point',
-    balance: 125000, paidUntil: '2026-09-01', remainingDays: 21,
-    parent: 'hypernet.iq', group: 'Gold',
-    ipAddress: '192.168.1.104', lastOnline: '2026-08-11 10:29',
-    iptv: 'بدون اشتراك', remainingDownload: '225.00 GB',
-    invoices: [
-      { id: 'INV-2002', date: '2026-07-01 08:00:00', type: 'تجديد', amount: 45000, desc: 'اشتراك شهري — يوليو 2026', createdBy: 'admin', paymentMethod: 'نقد', paid: true },
-      { id: 'INV-2001', date: '2026-06-01 08:00:00', type: 'تجديد', amount: 45000, desc: 'اشتراك شهري — يونيو 2026', createdBy: 'admin', paymentMethod: 'نقد', paid: true },
-    ],
-    sessions: [
-      { id: 'S-1001', start: '2026-08-11 10:00', end: '—', ip: '192.168.1.104', download: '1.2 GB', upload: '320 MB', status: 'نشط' },
-    ],
-  },
-  {
-    id: 'C002', username: 'fatima.ali@hypernet.iq', firstName: 'Fatima', lastName: 'Ali',
-    phone: '+964 770 987 6543', address: 'المنصور، بغداد', notes: '',
-    status: 'active', statusColor: 'var(--success)',
-    plan: 'Silver 25Mbps Fiber', planPrice: 30000, userType: 'Fiber Access Point',
-    balance: 75000, paidUntil: '2026-08-20', remainingDays: 9,
-    parent: 'hypernet.iq', group: 'Silver',
-    ipAddress: '192.168.1.112', lastOnline: '2026-08-11 10:15',
-    iptv: 'بدون اشتراك', remainingDownload: '180.00 GB',
-    invoices: [
-      { id: 'INV-2003', date: '2026-06-01 08:00:00', type: 'تجديد', amount: 30000, desc: 'اشتراك شهري — يونيو 2026', createdBy: 'admin', paymentMethod: 'نقد', paid: true },
-    ],
-    sessions: [],
-  },
-  {
-    id: 'C003', username: 'hassan.m@hypernet.iq', firstName: 'Hassan', lastName: 'Mahmoud',
-    phone: '+964 780 555 1212', address: 'عينكاوه، أربيل', notes: '',
-    status: 'active', statusColor: 'var(--warning)',
-    plan: 'Platinum 100Mbps', planPrice: 75000, userType: 'Wireless Access Point',
-    balance: 210000, paidUntil: '2026-10-15', remainingDays: 65,
-    parent: 'hypernet.iq', group: 'Platinum',
-    ipAddress: '192.168.2.45', lastOnline: '2026-08-11 09:00',
-    iptv: 'مفعّل', remainingDownload: 'غير محدود',
-    invoices: [
-      { id: 'INV-2004', date: '2026-07-01 08:00:00', type: 'تجديد', amount: 75000, desc: 'اشتراك شهري — يوليو 2026', createdBy: 'admin', paymentMethod: 'تحويل', paid: true },
-    ],
-    sessions: [
-      { id: 'S-1003', start: '2026-08-11 09:00', end: '—', ip: '192.168.2.45', download: '3.1 GB', upload: '890 MB', status: 'نشط' },
-    ],
-  },
-  {
-    id: 'C004', username: 'zainab.h@hypernet.iq', firstName: 'Zainab', lastName: 'Hussein',
-    phone: '+964 750 444 8899', address: 'العشار، البصرة', notes: 'حساب معلّق',
-    status: 'suspended', statusColor: 'var(--error)',
-    plan: 'Bronze 10Mbps', planPrice: 20000, userType: 'Wireless Access Point',
-    balance: 0, paidUntil: '2026-07-31', remainingDays: 0,
-    parent: 'hypernet.iq', group: 'Bronze',
-    ipAddress: '—', lastOnline: '2026-08-09 15:40',
-    iptv: 'بدون اشتراك', remainingDownload: '0.00 GB',
-    invoices: [
-      { id: 'INV-2005', date: '2026-08-01 08:00:00', type: 'تجديد', amount: 20000, desc: 'اشتراك شهري — أغسطس 2026', createdBy: 'admin', paymentMethod: '—', paid: false },
-    ],
-    sessions: [],
-  },
-];
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 /* ─────────────── مكوّن: صف الجدول ─────────────── */
-function TableRow({ cust, selected, onSelect, onOpen, dense }) {
+function TableRow({ cust, selected, onSelect, onOpen, onDelete }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const isAuthed = cust.auth_state === 'AUTHENTICATED' || cust.authenticated;
+  const authLabel = isAuthed ? 'موثق' : 'غير موثق';
+  const authClass = isAuthed ? 'hcn-badge-success' : 'hcn-badge-warning';
+
   return (
     <tr>
-      <td style={{ padding: dense ? '10px 16px' : '16px' }}>
+      <td style={{ padding: '16px' }}>
         <input
           type="checkbox"
           checked={selected}
-          onChange={() => onSelect(cust.id)}
+          onChange={() => onSelect(cust.session_id)}
           style={{ accentColor: 'var(--primary)', width: 18, height: 18, cursor: 'pointer' }}
         />
       </td>
-      <td style={{ padding: dense ? '10px 16px' : '16px' }}>
-        <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: cust.statusColor }} />
+      <td style={{ padding: '16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span
+            onClick={() => onOpen(cust)}
+            style={{ color: 'var(--text-primary)', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}
+            onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
+            onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
+          >
+            {cust.user_name || cust.session_id}
+          </span>
+          <span style={{ fontSize: 12, color: 'var(--text-disabled)', fontFamily: 'monospace' }}>
+            ID: {cust.session_id}
+          </span>
+        </div>
       </td>
-      <td style={{ padding: dense ? '10px 16px' : '16px' }}>
-        <span
-          onClick={() => onOpen(cust)}
-          style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: 14, cursor: 'pointer', textDecoration: 'none' }}
-          onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
-          onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
+      <td style={{ padding: '16px', fontWeight: 600 }}>{cust.customer_id}</td>
+      <td style={{ padding: '16px' }}>
+        <span className={`hcn-badge ${authClass}`}>
+          {authLabel}
+        </span>
+      </td>
+      <td style={{ padding: '16px', fontFamily: 'monospace', fontSize: 13 }}>{cust.lastActive}</td>
+      <td style={{ padding: '16px', fontFamily: 'monospace', fontSize: 13 }}>{cust.created_at}</td>
+      <td style={{ padding: '16px', textAlign: 'left', position: 'relative' }}>
+        <button 
+          onClick={(e) => { e.stopPropagation(); setMenuOpen(v => !v); }} 
+          className="hcn-btn-icon"
+          title="خيارات الجلسة"
         >
-          {cust.username}
-        </span>
-      </td>
-      <td style={{ padding: dense ? '10px 16px' : '16px' }}>{cust.firstName}</td>
-      <td style={{ padding: dense ? '10px 16px' : '16px' }}>{cust.lastName}</td>
-      <td style={{ padding: dense ? '10px 16px' : '16px', fontFamily: 'monospace' }}>{cust.paidUntil}</td>
-      <td style={{ padding: dense ? '10px 16px' : '16px' }}>{cust.parent}</td>
-      <td style={{ padding: dense ? '10px 16px' : '16px' }}>{cust.plan}</td>
-      <td style={{ padding: dense ? '10px 16px' : '16px' }}>
-        <span className={`hcn-badge ${cust.remainingDays === 0 ? 'hcn-badge-error' : cust.remainingDays < 10 ? 'hcn-badge-warning' : 'hcn-badge-success'}`}>
-          {cust.remainingDays}
-        </span>
-      </td>
-      <td style={{ padding: dense ? '10px 16px' : '16px', textAlign: 'left' }}>
-        <button onClick={() => onOpen(cust)} className="hcn-btn-icon">
           <MoreVertical size={20} />
         </button>
+
+        {menuOpen && (
+          <div 
+            style={{
+              position: 'absolute',
+              left: 16,
+              top: 48,
+              background: 'var(--bg-paper)',
+              borderRadius: 'var(--radius-md)',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.18)',
+              border: '1px solid var(--border)',
+              zIndex: 100,
+              minWidth: 170,
+              padding: '6px 0',
+              display: 'flex',
+              flexDirection: 'column'
+            }}
+            onClick={() => setMenuOpen(false)}
+          >
+            <button
+              onClick={() => onOpen(cust)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                padding: '10px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                fontSize: 13,
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                textAlign: 'right',
+                width: '100%'
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-neutral)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            >
+              <MessageSquare size={16} color="var(--primary)" /> عرض المحادثة
+            </button>
+            <button
+              onClick={() => onDelete(cust.session_id)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                padding: '10px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                fontSize: 13,
+                color: 'var(--error)',
+                cursor: 'pointer',
+                textAlign: 'right',
+                width: '100%'
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--error-bg)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            >
+              <Trash2 size={16} color="var(--error)" /> حذف الجلسة
+            </button>
+          </div>
+        )}
       </td>
     </tr>
   );
 }
 
-/* ─────────────── مكوّن: نافذة التفاصيل ─────────────── */
+/* ─────────────── مكوّن: نافذة التفاصيل والمحادثة (Modal) ─────────────── */
 const DETAIL_TABS = [
-  { key: 'overview',  label: 'نظرة عامة', icon: Monitor },
-  { key: 'invoices',  label: 'الفواتير',   icon: FileText },
-  { key: 'sessions',  label: 'الجلسات',    icon: Wifi },
-  { key: 'history',   label: 'السجل',      icon: History },
+  { key: 'chat',     label: 'المحادثة الحية', icon: MessageSquare },
+  { key: 'overview', label: 'بيانات المشترك', icon: User },
 ];
 
-function DetailModal({ cust, onClose }) {
-  const [tab, setTab] = useState('overview');
+function DetailModal({ cust, onClose, onDelete }) {
+  const [tab, setTab] = useState('chat');
+  const [messages, setMessages] = useState([]);
+  const [loadingMsg, setLoadingMsg] = useState(false);
+  const [replyText, setReplyText] = useState('');
+  const [sendingReply, setSendingReply] = useState(false);
+  const [previewImage, setPreviewImage] = useState(null);
+  const chatEndRef = useRef(null);
 
-  if (!cust) return null;
+  const fetchMessages = () => {
+    fetch(`${API_BASE}/api/sessions/${cust.session_id}/messages`)
+      .then(r => r.json())
+      .then(data => {
+        setMessages(data);
+        setLoadingMsg(false);
+      })
+      .catch(e => {
+        console.error(e);
+        setLoadingMsg(false);
+      });
+  };
+
+  useEffect(() => {
+    let intervalId;
+    if (tab === 'chat') {
+      setLoadingMsg(true);
+      fetchMessages();
+      intervalId = setInterval(fetchMessages, 3000);
+    }
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [tab, cust.session_id]);
+
+  useEffect(() => {
+    if (tab === 'chat' && chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, tab]);
+
+  const handleSendReply = async () => {
+    if (!replyText.trim() || sendingReply) return;
+    setSendingReply(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/sessions/${cust.session_id}/reply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: replyText.trim() })
+      });
+      if (res.ok) {
+        setReplyText('');
+        fetchMessages();
+      }
+    } catch (err) {
+      console.error('Failed to send reply:', err);
+    } finally {
+      setSendingReply(false);
+    }
+  };
+
+  const isAuthed = cust.auth_state === 'AUTHENTICATED' || cust.authenticated;
+  const authLabel = isAuthed ? 'موثق' : 'غير موثق';
+
+  // Helper to render message content (Text or Photo)
+  const renderMessageContent = (text, isUser) => {
+    if (text.includes('[صورة]')) {
+      const match = text.match(/\[صورة\]\s*(\S+)/);
+      const relativePath = match ? match[1] : '';
+      const fullUrl = relativePath.startsWith('http') ? relativePath : `${API_BASE}${relativePath}`;
+      const caption = text.replace(/\[صورة\]\s*\S+/, '').trim();
+
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div 
+            onClick={() => setPreviewImage(fullUrl)}
+            style={{ 
+              position: 'relative', 
+              borderRadius: 12, 
+              overflow: 'hidden', 
+              cursor: 'pointer',
+              border: '2px solid rgba(255,255,255,0.2)',
+              maxWidth: 280,
+              maxHeight: 220
+            }}
+          >
+            <img 
+              src={fullUrl} 
+              alt="User Upload" 
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              onError={(e) => { e.target.style.display = 'none'; }}
+            />
+            <div style={{
+              position: 'absolute', bottom: 6, right: 6,
+              background: 'rgba(0,0,0,0.6)', color: '#fff',
+              padding: '4px 8px', borderRadius: 6, fontSize: 11,
+              display: 'flex', alignItems: 'center', gap: 4
+            }}>
+              <ZoomIn size={12} /> انقر للتكبير
+            </div>
+          </div>
+          {caption && <span style={{ fontSize: 13, marginTop: 4 }}>{caption}</span>}
+        </div>
+      );
+    }
+    return text;
+  };
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 1200,
-      background: 'rgba(33, 43, 54, 0.48)', backdropFilter: 'blur(4px)',
-      display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-      padding: '40px 16px', overflowY: 'auto',
-    }}>
-      <div className="hcn-card animate-scale-in" style={{ width: '100%', maxWidth: 860, display: 'flex', flexDirection: 'column' }}>
-
-        {/* ── Breadcrumb ── */}
-        <div style={{ padding: '24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button onClick={onClose} className="hcn-btn-icon" style={{ width: 32, height: 32 }}>
-            <ChevronLeft size={20} />
-          </button>
-          <span style={{ fontSize: 14, color: 'var(--text-disabled)' }}>لوحة التحكم</span>
-          <span style={{ color: 'var(--text-disabled)' }}>›</span>
-          <span style={{ fontSize: 14, color: 'var(--text-secondary)', cursor: 'pointer' }}>العملاء</span>
-          <span style={{ color: 'var(--text-disabled)' }}>›</span>
-          <span style={{ fontSize: 14, color: 'var(--text-primary)', fontWeight: 600 }}>{cust.username}</span>
-          <div style={{ flex: 1 }} />
-          <button onClick={onClose} className="hcn-btn-icon" style={{ width: 32, height: 32 }}>
-            <X size={20} />
-          </button>
+    <div className="hcn-modal-overlay" onClick={onClose}>
+      <div
+        className="hcn-modal"
+        style={{ maxWidth: 840, width: '92%', height: '85vh', padding: 0, overflow: 'hidden' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* ── Modal Header ── */}
+        <div style={{ padding: '18px 28px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-paper)' }}>
+          <div>
+            <h2 className="hcn-title" style={{ fontSize: 18, marginBottom: 2 }}>
+              {cust.user_name || cust.session_id}
+            </h2>
+            <div style={{ display: 'flex', gap: 8, fontSize: 12, color: 'var(--text-disabled)', alignItems: 'center' }}>
+              <span>ID: <strong style={{ color: 'var(--text-primary)', fontFamily: 'monospace' }}>{cust.session_id}</strong></span>
+              <span>•</span>
+              <span className={`hcn-badge ${isAuthed ? 'hcn-badge-success' : 'hcn-badge-warning'}`}>{authLabel}</span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button 
+              onClick={() => { onDelete(cust.session_id); onClose(); }} 
+              className="hcn-btn-outlined" 
+              style={{ color: 'var(--error)', borderColor: 'var(--error)', padding: '6px 12px', fontSize: 12, gap: 4 }}
+            >
+              <Trash2 size={14} /> حذف
+            </button>
+            <button onClick={onClose} className="hcn-btn-icon">
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         {/* ── Tabs ── */}
-        <div className="hcn-tabs-container">
+        <div className="hcn-tabs-container" style={{ padding: '0 28px', margin: 0, borderBottom: '1px solid var(--border)' }}>
           {DETAIL_TABS.map(t => {
             const Icon = t.icon;
             const active = tab === t.key;
@@ -163,8 +277,9 @@ function DetailModal({ cust, onClose }) {
                 key={t.key}
                 onClick={() => setTab(t.key)}
                 className={`hcn-tab ${active ? 'active' : ''}`}
+                style={{ padding: '12px 0' }}
               >
-                <Icon size={18} />
+                <Icon size={16} />
                 {t.label}
               </button>
             );
@@ -172,176 +287,124 @@ function DetailModal({ cust, onClose }) {
         </div>
 
         {/* ── Tab Content ── */}
-        <div style={{ padding: '0 24px 32px' }}>
+        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          {/* سجل المحادثة */}
+          {tab === 'chat' && (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto', padding: '24px 28px', background: 'var(--bg-default)' }}>
+                {loadingMsg && messages.length === 0 ? (
+                  <div style={{ textAlign: 'center', color: 'var(--text-disabled)', margin: 'auto' }}>جاري تحميل الرسائل...</div>
+                ) : messages.length === 0 ? (
+                  <div style={{ textAlign: 'center', color: 'var(--text-disabled)', margin: 'auto' }}>لا توجد رسائل مسجلة لهذه الجلسة حتى الآن</div>
+                ) : (
+                  messages.map((msg, i) => {
+                    const isUser = msg.sender === 'user';
+                    const isAdmin = msg.sender === 'admin';
+                    return (
+                      <div key={i} style={{ 
+                        alignSelf: isUser ? 'flex-start' : 'flex-end',
+                        maxWidth: '75%',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: isUser ? 'flex-start' : 'flex-end'
+                      }}>
+                        <div style={{ 
+                          background: isUser 
+                            ? 'var(--primary)' 
+                            : isAdmin 
+                              ? '#4F46E5' 
+                              : 'var(--bg-paper)',
+                          color: (isUser || isAdmin) ? '#fff' : 'var(--text-primary)',
+                          padding: '12px 18px',
+                          borderRadius: '16px',
+                          borderBottomRightRadius: isUser ? 4 : 16,
+                          borderBottomLeftRadius: isUser ? 16 : 4,
+                          fontSize: 14,
+                          lineHeight: 1.5,
+                          whiteSpace: 'pre-line',
+                          boxShadow: 'var(--shadow-card)',
+                          border: (isUser || isAdmin) ? 'none' : '1px solid var(--border)'
+                        }}>
+                          {renderMessageContent(msg.text, isUser)}
+                        </div>
+                        <span style={{ fontSize: 11, color: 'var(--text-disabled)', marginTop: 4, padding: '0 4px' }}>
+                          {msg.time} • {isUser ? 'المشترك' : isAdmin ? 'الدعم الفني (لوحة التحكم)' : 'المساعد الذكي'}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+                <div ref={chatEndRef} />
+              </div>
+
+              {/* ── شريط الرد اليدوي ── */}
+              <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', background: 'var(--bg-paper)', display: 'flex', gap: 12, alignItems: 'center' }}>
+                <input
+                  type="text"
+                  className="hcn-input"
+                  placeholder="اكتب رداً يدويًا للمشترك عبر تيليجرام..."
+                  value={replyText}
+                  onChange={e => setReplyText(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendReply();
+                    }
+                  }}
+                  style={{ flex: 1 }}
+                />
+                <button
+                  onClick={handleSendReply}
+                  disabled={sendingReply || !replyText.trim()}
+                  className="hcn-btn-primary"
+                  style={{ padding: '10px 20px', gap: 8, display: 'flex', alignItems: 'center', minWidth: 120, justifyContent: 'center' }}
+                >
+                  <Send size={16} />
+                  {sendingReply ? 'جاري الإرسال...' : 'إرسال رد'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* معاينة الصورة في Lightbox */}
+          {previewImage && (
+            <div 
+              onClick={() => setPreviewImage(null)}
+              style={{
+                position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
+                zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: 24, cursor: 'zoom-out'
+              }}
+            >
+              <img 
+                src={previewImage} 
+                alt="Enlarged User Photo" 
+                style={{ maxWidth: '90%', maxHeight: '90%', borderRadius: 12, boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }} 
+              />
+            </div>
+          )}
 
           {/* نظرة عامة */}
           {tab === 'overview' && (
-            <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 32 }}>
-              {/* اليسار: Avatar + Actions */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-                {/* Avatar */}
-                <div className="hcn-card" style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, boxShadow: 'var(--shadow-card)', border: '1px solid var(--border)' }}>
-                  <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'var(--bg-neutral)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <User size={40} color="var(--text-disabled)" />
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, width: '100%' }}>
-                    <div style={{ fontWeight: 700, fontSize: 16 }}>{cust.firstName} {cust.lastName}</div>
-                    <div style={{ fontSize: 14, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 8 }}><Phone size={14} /> {cust.phone}</div>
-                    <div style={{ fontSize: 14, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 8 }}><MapPin size={14} /> {cust.address}</div>
-                  </div>
-                  <span className={`hcn-badge ${cust.status === 'active' ? 'hcn-badge-success' : 'hcn-badge-error'}`}>
-                    {cust.status === 'active' ? 'نشط' : 'موقوف'}
-                  </span>
-                </div>
-
-                {/* أزرار الإجراءات */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  {[
-                    { label: 'قطع الاتصال', icon: Plug,      color: 'var(--error)' },
-                    { label: 'حذف',         icon: Trash2,    color: 'var(--error)' },
-                    { label: 'تفعيل باقة',  icon: Package,   color: 'var(--success)' },
-                    { label: 'إصدار فاتورة',icon: CreditCard,color: 'var(--info)' },
-                    { label: 'إرسال إعدادات',icon: Settings, color: 'var(--text-secondary)' },
-                    { label: 'تمديد المدة', icon: RefreshCw, color: '#8B5CF6' },
-                  ].map(btn => {
-                    const Icon = btn.icon;
-                    return (
-                      <button
-                        key={btn.label}
-                        onClick={() => alert(`${btn.label}: ${cust.username}`)}
-                        style={{
-                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
-                          padding: '12px', borderRadius: '12px', border: '1px solid var(--border)',
-                          background: 'transparent', cursor: 'pointer', fontFamily: 'inherit',
-                          fontSize: 13, color: 'var(--text-primary)', fontWeight: 600, transition: 'all 0.2s',
-                        }}
-                        onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-neutral)'; e.currentTarget.style.borderColor = btn.color; e.currentTarget.style.color = btn.color; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
-                      >
-                        <Icon size={20} color={btn.color} />
-                        {btn.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* اليمين: حقول التفاصيل */}
+            <div style={{ padding: '28px', overflowY: 'auto' }}>
               <div className="hcn-card" style={{ padding: 24, display: 'flex', flexDirection: 'column', border: '1px solid var(--border)', boxShadow: 'none' }}>
                 {[
-                  { label: 'اسم المستخدم',      value: cust.username },
-                  { label: 'نوع المستخدم',       value: cust.userType },
-                  { label: 'الرصيد',             value: `${cust.balance.toLocaleString()} د.ع` },
-                  { label: 'الباقة',             value: cust.plan },
-                  { label: 'تاريخ الانتهاء',     value: cust.paidUntil },
-                  { label: 'المجموعة',           value: cust.group },
-                  { label: 'سعر الباقة',        value: `${cust.planPrice.toLocaleString()} د.ع/شهر` },
-                  { label: 'اشتراك IPTV',        value: cust.iptv },
-                  { label: 'التنزيل المتبقي',    value: cust.remainingDownload },
-                  { label: 'الأيام المتبقية',    value: `${cust.remainingDays} يوم` },
-                  { label: 'المشرف الأعلى',      value: cust.parent },
-                  { label: 'آخر اتصال',          value: cust.lastOnline },
+                  { label: 'اسم المشترك (Telegram)', value: cust.user_name || cust.session_id },
+                  { label: 'معرف الجلسة',             value: cust.session_id },
+                  { label: 'معرف العميل (CRM)',       value: cust.customer_id },
+                  { label: 'حالة المصادقة',           value: authLabel },
+                  { label: 'آخر تفاعل',               value: cust.lastActive },
+                  { label: 'تاريخ بدء الجلسة',        value: cust.created_at },
                 ].map((field, i) => (
                   <div key={field.label} style={{
-                    display: 'flex', alignItems: 'center',
-                    padding: '16px 0',
-                    borderBottom: i === 11 ? 'none' : '1px dashed var(--border)',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '14px 0', borderBottom: i < 5 ? '1px solid var(--border)' : 'none'
                   }}>
-                    <span style={{ width: 200, fontSize: 14, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                      {field.label}
-                    </span>
-                    <span style={{ fontSize: 14, color: 'var(--text-primary)', fontWeight: 600, flex: 1 }}>{field.value}</span>
+                    <span style={{ fontSize: 13, color: 'var(--text-disabled)', fontWeight: 600 }}>{field.label}</span>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{field.value}</span>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-
-          {/* الفواتير */}
-          {tab === 'invoices' && (
-            <div className="hcn-table-wrapper" style={{ border: '1px solid var(--border)' }}>
-              <table className="hcn-table">
-                <thead>
-                  <tr>
-                    {['رقم الفاتورة', 'التاريخ', 'النوع', 'المبلغ', 'الوصف', 'بواسطة', 'طريقة الدفع', 'مدفوع'].map(h => (
-                      <th key={h}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {cust.invoices.map(inv => (
-                    <tr key={inv.id}>
-                      <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{inv.id}</td>
-                      <td style={{ fontFamily: 'monospace' }}>{inv.date}</td>
-                      <td>{inv.type}</td>
-                      <td style={{ fontWeight: 700 }}>{inv.amount.toLocaleString()}</td>
-                      <td>{inv.desc}</td>
-                      <td>{inv.createdBy}</td>
-                      <td>{inv.paymentMethod}</td>
-                      <td>
-                        {inv.paid
-                          ? <CheckCircle2 size={22} color="var(--success)" />
-                          : <span style={{ display: 'inline-block', width: 22, height: 22, borderRadius: '50%', border: '2px solid var(--border)' }} />
-                        }
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* الجلسات */}
-          {tab === 'sessions' && (
-            <div className="hcn-table-wrapper" style={{ border: '1px solid var(--border)' }}>
-              {cust.sessions.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-disabled)', fontSize: 15 }}>
-                  لا توجد جلسات نشطة
-                </div>
-              ) : (
-                <table className="hcn-table">
-                  <thead>
-                    <tr>
-                      {['رقم الجلسة', 'البداية', 'النهاية', 'عنوان IP', 'تنزيل', 'رفع', 'الحالة'].map(h => (
-                        <th key={h}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cust.sessions.map(s => (
-                      <tr key={s.id}>
-                        <td style={{ fontFamily: 'monospace' }}>{s.id}</td>
-                        <td style={{ fontFamily: 'monospace' }}>{s.start}</td>
-                        <td>{s.end}</td>
-                        <td style={{ fontFamily: 'monospace' }}>{s.ip}</td>
-                        <td>{s.download}</td>
-                        <td>{s.upload}</td>
-                        <td>
-                          <span className="hcn-badge hcn-badge-success">{s.status}</span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          )}
-
-          {/* السجل */}
-          {tab === 'history' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {[
-                { action: 'تسجيل دخول', time: '2026-08-11 10:29', by: 'system' },
-                { action: 'تجديد اشتراك', time: '2026-07-01 08:00', by: 'admin' },
-                { action: 'إنشاء الحساب', time: '2026-01-15 09:00', by: 'admin' },
-              ].map((log, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px', background: 'var(--bg-paper)', borderRadius: '12px', border: '1px solid var(--border)' }}>
-                  <Clock size={20} color="var(--text-disabled)" />
-                  <span style={{ fontSize: 15, color: 'var(--text-primary)', flex: 1, fontWeight: 600 }}>{log.action}</span>
-                  <span style={{ fontSize: 13, fontFamily: 'monospace', color: 'var(--text-secondary)' }}>{log.time}</span>
-                  <span style={{ fontSize: 14, color: 'var(--primary)', fontWeight: 600 }}>{log.by}</span>
-                </div>
-              ))}
             </div>
           )}
         </div>
@@ -352,55 +415,119 @@ function DetailModal({ cust, onClose }) {
 
 /* ─────────────── المكوّن الرئيسي ─────────────── */
 export default function CrmLookupTab() {
-  const [search, setSearch]               = useState('');
-  const [selected, setSelected]           = useState([]);
-  const [openCustomer, setOpenCustomer]   = useState(null);
-  const [showFilter, setShowFilter]       = useState(false);
-  const [dense, setDense]                 = useState(false);
-  const [page, setPage]                   = useState(0);
-  const [rowsPerPage]                     = useState(5);
-  const [filterStatus, setFilterStatus]   = useState('All');
-  const [filterPlan, setFilterPlan]       = useState('All');
-  const [activeTab, setActiveTab]         = useState('all');
+  const [customers, setCustomers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState([]);
+  const [openCustomer, setOpenCustomer] = useState(null);
+  const [showFilter, setShowFilter] = useState(false);
+  const [page, setPage] = useState(0);
+  const rowsPerPage = 10;
+  const [filterAuth, setFilterAuth] = useState('All');
+  const [activeTab, setActiveTab] = useState('all');
 
-  const filtered = useMemo(() =>
-    CUSTOMERS.filter(c => {
-      const q = search.toLowerCase();
-      const matchSearch = !q ||
-        c.username.toLowerCase().includes(q) ||
-        c.firstName.toLowerCase().includes(q) ||
-        c.lastName.toLowerCase().includes(q) ||
-        c.id.toLowerCase().includes(q);
-      const matchStatus = filterStatus === 'All' || c.status === filterStatus.toLowerCase();
-      const matchPlan   = filterPlan === 'All' || c.plan.includes(filterPlan);
-      return matchSearch && matchStatus && matchPlan;
-    }), [search, filterStatus, filterPlan]);
+  const fetchCustomers = () => {
+    fetch(`${API_BASE}/api/crm/customers`)
+      .then(res => res.json())
+      .then(data => {
+        setCustomers(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error(err);
+        setLoading(false);
+      });
+  };
 
-  const paginated   = filtered.slice(page * rowsPerPage, (page + 1) * rowsPerPage);
-  const totalPages  = Math.ceil(filtered.length / rowsPerPage);
+  useEffect(() => {
+    fetchCustomers();
+    const intervalId = setInterval(fetchCustomers, 4000);
+    return () => clearInterval(intervalId);
+  }, []);
 
-  const toggleSelect = (id) =>
-    setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const handleDeleteSession = (sessionId) => {
+    if (!window.confirm(`هل أنت متأكد من حذف الجلسة ${sessionId}؟`)) return;
+    fetch(`${API_BASE}/api/sessions/${sessionId}`, { method: 'DELETE' })
+      .then(res => res.json())
+      .then(() => {
+        setSelected(prev => prev.filter(id => id !== sessionId));
+        fetchCustomers();
+      })
+      .catch(err => console.error('Failed to delete session:', err));
+  };
+
+  const handleBatchDelete = () => {
+    if (!window.confirm(`هل أنت متأكد من حذف ${selected.length} جلسة محددة؟`)) return;
+    Promise.all(selected.map(id => fetch(`${API_BASE}/api/sessions/${id}`, { method: 'DELETE' })))
+      .then(() => {
+        setSelected([]);
+        fetchCustomers();
+      })
+      .catch(err => console.error('Batch delete failed:', err));
+  };
+
+  // ── Global search and multi-criteria filter ──
+  const filtered = useMemo(() => {
+    return customers.filter(c => {
+      const q = search.toLowerCase().trim();
+      const sId = (c.session_id || '').toLowerCase();
+      const uName = (c.user_name || '').toLowerCase();
+      const cId = (c.customer_id || '').toLowerCase();
+
+      const matchSearch = !q || sId.includes(q) || uName.includes(q) || cId.includes(q);
+
+      const isAuthed = c.auth_state === 'AUTHENTICATED' || c.authenticated;
+      const matchAuth = filterAuth === 'All' || (filterAuth === 'AUTHENTICATED' ? isAuthed : !isAuthed);
+
+      const matchTab = activeTab === 'all'
+        ? true
+        : activeTab === 'authenticated'
+          ? isAuthed
+          : !isAuthed;
+
+      return matchSearch && matchAuth && matchTab;
+    });
+  }, [search, filterAuth, activeTab, customers]);
+
+  const handleSearchChange = (e) => {
+    setSearch(e.target.value);
+    setPage(0);
+  };
+
+  const handleTabChange = (tabKey) => {
+    setActiveTab(tabKey);
+    setPage(0);
+  };
+
+  const handleFilterChange = (filterVal) => {
+    setFilterAuth(filterVal);
+    setPage(0);
+  };
+
+  const paginated = filtered.slice(page * rowsPerPage, (page + 1) * rowsPerPage);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
+
+  const toggleSelect = (sessionId) =>
+    setSelected(prev => prev.includes(sessionId) ? prev.filter(x => x !== sessionId) : [...prev, sessionId]);
   const toggleAll = () =>
-    setSelected(selected.length === paginated.length ? [] : paginated.map(c => c.id));
+    setSelected(selected.length === paginated.length && paginated.length > 0 ? [] : paginated.map(c => c.session_id));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', position: 'relative' }}>
-
       {/* ── رأس الصفحة ── */}
       <div className="hcn-page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
-          <h1 className="hcn-title" style={{ marginBottom: 8 }}>قائمة العملاء</h1>
+          <h1 className="hcn-title" style={{ marginBottom: 8 }}>جلسات العملاء</h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--text-disabled)' }}>
             <span>لوحة التحكم</span>
             <span>•</span>
             <span>العملاء</span>
             <span>•</span>
-            <span style={{ color: 'var(--text-primary)' }}>القائمة</span>
+            <span style={{ color: 'var(--text-primary)' }}>جلسات التلجرام الحية</span>
           </div>
         </div>
-        <button className="hcn-btn-primary" onClick={() => alert('إضافة عميل جديد')}>
-          <Plus size={20} /> عميل جديد
+        <button onClick={fetchCustomers} className="hcn-btn-secondary" style={{ padding: '8px 16px', fontSize: 13, gap: 6, display: 'flex', alignItems: 'center' }}>
+          <RefreshCw size={14} /> تحديث
         </button>
       </div>
 
@@ -408,14 +535,14 @@ export default function CrmLookupTab() {
       <div className="hcn-card">
         {/* Tab Bar */}
         <div className="hcn-tabs-container" style={{ margin: 0, padding: '0 24px', borderBottom: '1px solid var(--border)' }}>
-          <button className={`hcn-tab ${activeTab === 'all' ? 'active' : ''}`} onClick={() => setActiveTab('all')}>
-            الكل <span className="hcn-tab-badge">{CUSTOMERS.length}</span>
+          <button className={`hcn-tab ${activeTab === 'all' ? 'active' : ''}`} onClick={() => handleTabChange('all')}>
+            الكل <span className="hcn-tab-badge">{customers.length}</span>
           </button>
-          <button className={`hcn-tab ${activeTab === 'active' ? 'active' : ''}`} onClick={() => setActiveTab('active')}>
-            نشط <span className="hcn-tab-badge">{CUSTOMERS.filter(c=>c.status==='active').length}</span>
+          <button className={`hcn-tab ${activeTab === 'authenticated' ? 'active' : ''}`} onClick={() => handleTabChange('authenticated')}>
+            موثق <span className="hcn-tab-badge">{customers.filter(c => c.auth_state === 'AUTHENTICATED' || c.authenticated).length}</span>
           </button>
-          <button className={`hcn-tab ${activeTab === 'suspended' ? 'active' : ''}`} onClick={() => setActiveTab('suspended')}>
-            موقوف <span className="hcn-tab-badge">{CUSTOMERS.filter(c=>c.status==='suspended').length}</span>
+          <button className={`hcn-tab ${activeTab === 'unauthenticated' ? 'active' : ''}`} onClick={() => handleTabChange('unauthenticated')}>
+            غير موثق <span className="hcn-tab-badge">{customers.filter(c => c.auth_state !== 'AUTHENTICATED' && !c.authenticated).length}</span>
           </button>
         </div>
 
@@ -425,9 +552,9 @@ export default function CrmLookupTab() {
             <Search size={20} style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-disabled)' }} />
             <input
               type="text"
-              placeholder="بحث..."
+              placeholder="بحث بالاسم أو معرف التلجرام أو معرف العميل..."
               value={search}
-              onChange={e => { setSearch(e.target.value); setPage(0); }}
+              onChange={handleSearchChange}
               className="hcn-input"
               style={{ paddingRight: 44 }}
             />
@@ -441,9 +568,31 @@ export default function CrmLookupTab() {
           </button>
         </div>
 
+        {/* لوحة الفلاتر المنبثقة */}
+        {showFilter && (
+          <div style={{ padding: '16px 24px', background: 'var(--bg-neutral)', borderBottom: '1px solid var(--border)', display: 'flex', gap: 16, alignItems: 'center' }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>حالة المصادقة:</span>
+            <div className="hcn-pill-group">
+              {[
+                { key: 'All', label: 'الكل' },
+                { key: 'AUTHENTICATED', label: 'موثق' },
+                { key: 'UNAUTHENTICATED', label: 'غير موثق' },
+              ].map(f => (
+                <button
+                  key={f.key}
+                  className={`hcn-pill ${filterAuth === f.key ? 'active-primary' : ''}`}
+                  onClick={() => handleFilterChange(f.key)}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* الجدول */}
         <div className="hcn-table-wrapper">
-          <table className={`hcn-table ${dense ? 'hcn-table-dense' : ''}`}>
+          <table className="hcn-table">
             <thead>
               <tr>
                 <th style={{ width: 60, paddingRight: 24 }}>
@@ -454,132 +603,103 @@ export default function CrmLookupTab() {
                     style={{ accentColor: 'var(--primary)', width: 18, height: 18, cursor: 'pointer' }}
                   />
                 </th>
-                {['الحالة', 'اسم المستخدم', 'الاسم الأول', 'الاسم الأخير', 'تاريخ الانتهاء', 'المشرف', 'الباقة', 'الأيام المتبقية', ''].map(h => (
+                {['المشترك / الجلسة', 'معرف العميل (CRM)', 'المصادقة', 'آخر تفاعل', 'تاريخ البدء', ''].map(h => (
                   <th key={h}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {paginated.length === 0 ? (
+              {loading && customers.length === 0 ? (
                 <tr>
-                  <td colSpan={10} style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-disabled)', fontSize: 15 }}>
-                    لا توجد بيانات
+                  <td colSpan={7} style={{ textAlign: 'center', padding: 32, color: 'var(--text-disabled)' }}>
+                    جاري تحميل الجلسات...
                   </td>
                 </tr>
-              ) : paginated.map(cust => (
-                <TableRow
-                  key={cust.id}
-                  cust={cust}
-                  selected={selected.includes(cust.id)}
-                  onSelect={toggleSelect}
-                  onOpen={setOpenCustomer}
-                  dense={dense}
-                />
-              ))}
+              ) : paginated.length === 0 ? (
+                <tr>
+                  <td colSpan={7} style={{ textAlign: 'center', padding: 32, color: 'var(--text-disabled)' }}>
+                    لا توجد جلسات مطابقة للبحث
+                  </td>
+                </tr>
+              ) : (
+                paginated.map(cust => (
+                  <TableRow
+                    key={cust.session_id}
+                    cust={cust}
+                    selected={selected.includes(cust.session_id)}
+                    onSelect={toggleSelect}
+                    onOpen={setOpenCustomer}
+                    onDelete={handleDeleteSession}
+                  />
+                ))
+              )}
             </tbody>
           </table>
         </div>
 
-        {/* ذيل الجدول */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', borderTop: '1px solid var(--border)' }}>
-          {/* Dense Toggle */}
-          <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', fontSize: 14, color: 'var(--text-primary)', userSelect: 'none' }}>
+        {/* الترقيم (Pagination) */}
+        <div className="hcn-pagination">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 13, color: 'var(--text-disabled)' }}>
+              عرض {paginated.length} من أصل {filtered.length} جلسة
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button
-              onClick={() => setDense(!dense)}
-              className="hcn-toggle"
-              style={{ background: dense ? 'var(--primary)' : 'var(--text-disabled)' }}
+              onClick={() => setPage(p => Math.max(0, p - 1))}
+              disabled={page === 0}
+              className="hcn-btn-icon"
+              style={{ opacity: page === 0 ? 0.4 : 1 }}
             >
-              <div className="hcn-toggle-thumb" style={{ left: dense ? 22 : 2 }} />
+              <ChevronRight size={18} />
             </button>
-            مضغوط
-          </label>
-
-          {/* Pagination */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
-              الصفوف في الصفحة: <strong style={{ color: 'var(--text-primary)' }}>{rowsPerPage}</strong>
+            <span style={{ fontSize: 13, fontFamily: 'monospace', fontWeight: 600, padding: '0 8px' }}>
+              {page + 1} / {totalPages}
             </span>
-            <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
-              {page * rowsPerPage + 1}–{Math.min((page + 1) * rowsPerPage, filtered.length)} من {filtered.length}
-            </span>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                onClick={() => setPage(p => Math.max(0, p - 1))}
-                disabled={page === 0}
-                className="hcn-btn-icon"
-              >
-                <ChevronRight size={24} />
-              </button>
-              <button
-                onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-                disabled={page >= totalPages - 1}
-                className="hcn-btn-icon"
-              >
-                <ChevronLeft size={24} />
-              </button>
-            </div>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+              disabled={page >= totalPages - 1}
+              className="hcn-btn-icon"
+              style={{ opacity: page >= totalPages - 1 ? 0.4 : 1 }}
+            >
+              <ChevronLeft size={18} />
+            </button>
           </div>
         </div>
       </div>
 
-      {/* ── لوحة الفلتر (تنزلق من اليسار) ── */}
-      {showFilter && (
-        <>
-          <div onClick={() => setShowFilter(false)} style={{ position: 'fixed', inset: 0, zIndex: 900, background: 'rgba(33, 43, 54, 0.48)' }} />
-          <div className="animate-slide-in" style={{
-            position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 1000,
-            width: 320, background: 'var(--bg-paper)', boxShadow: '4px 0 24px rgba(0,0,0,0.12)',
-            display: 'flex', flexDirection: 'column',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '24px', borderBottom: '1px solid var(--border)' }}>
-              <span style={{ fontWeight: 700, fontSize: 18 }}>خيارات الفلتر</span>
-              <button onClick={() => setShowFilter(false)} className="hcn-btn-icon">
-                <X size={20} />
-              </button>
-            </div>
-
-            <div style={{ flex: 1, overflowY: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 24 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>الحالة</label>
-                <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="hcn-input">
-                  <option value="All">الكل</option>
-                  <option value="active">نشط</option>
-                  <option value="suspended">موقوف</option>
-                </select>
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>الباقة</label>
-                <select value={filterPlan} onChange={e => setFilterPlan(e.target.value)} className="hcn-input">
-                  <option value="All">الكل</option>
-                  <option value="Gold">Gold</option>
-                  <option value="Silver">Silver</option>
-                  <option value="Platinum">Platinum</option>
-                  <option value="Bronze">Bronze</option>
-                </select>
-              </div>
-            </div>
-
-            <div style={{ padding: '24px', borderTop: '1px solid var(--border)', display: 'flex', gap: 12 }}>
-              <button
-                onClick={() => { setFilterStatus('All'); setFilterPlan('All'); setPage(0); }}
-                className="hcn-btn-outlined" style={{ flex: 1 }}
-              >
-                مسح
-              </button>
-              <button
-                onClick={() => { setPage(0); setShowFilter(false); }}
-                className="hcn-btn-primary" style={{ flex: 1 }}
-              >
-                تطبيق
-              </button>
-            </div>
+      {/* شريط الإجراءات الجماعية (Floating Batch Bar) */}
+      {selected.length > 0 && (
+        <div className="hcn-batch-bar">
+          <span style={{ fontSize: 14, fontWeight: 700 }}>
+            تم تحديد {selected.length} جلسة
+          </span>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <button
+              onClick={handleBatchDelete}
+              className="hcn-btn-primary"
+              style={{ background: 'var(--error)', padding: '6px 14px', fontSize: 13, gap: 6 }}
+            >
+              <Trash2 size={16} /> حذف المحددين
+            </button>
+            <button
+              onClick={() => setSelected([])}
+              className="hcn-btn-outlined"
+              style={{ color: '#fff', borderColor: 'rgba(255,255,255,0.4)', padding: '6px 14px', fontSize: 13 }}
+            >
+              إلغاء التحديد
+            </button>
           </div>
-        </>
+        </div>
       )}
 
-      {/* ── نافذة التفاصيل ── */}
+      {/* Modal تفاصيل ومحادثة المشترك المنبثقة الحقيقية */}
       {openCustomer && (
-        <DetailModal cust={openCustomer} onClose={() => setOpenCustomer(null)} />
+        <DetailModal
+          cust={openCustomer}
+          onClose={() => setOpenCustomer(null)}
+          onDelete={handleDeleteSession}
+        />
       )}
     </div>
   );

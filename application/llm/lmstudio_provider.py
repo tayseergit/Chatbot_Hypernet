@@ -67,7 +67,7 @@ class LMStudioProvider:
         """Check if LM Studio API server is running."""
         try:
             base_url = self._config.lmstudio_url.split("/v1")[0]
-            resp = requests.get(f"{base_url}/v1/models", timeout=5)
+            resp = requests.get(f"{base_url}/v1/models", timeout=1.5)
             return resp.status_code == 200
         except Exception:
             return False

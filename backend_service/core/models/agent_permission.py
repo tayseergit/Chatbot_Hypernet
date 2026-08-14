@@ -40,5 +40,5 @@ class AgentPermission(Base):
     updated_by = Column(String(100), default="system", nullable=True)
 
     def __repr__(self):
-        status = "✅ ENABLED" if self.is_enabled else "🚫 DISABLED"
+        status = "ENABLED" if self.is_enabled else "DISABLED"
         return f"<AgentPermission(tool={self.tool_name}, {status}, risk={self.risk_level})>"

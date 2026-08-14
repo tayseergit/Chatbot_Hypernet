@@ -10,6 +10,14 @@ import sys
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+# Ensure UTF-8 output on Windows console
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 
 class _JsonFormatter(logging.Formatter):
     """Formats log records as structured JSON."""

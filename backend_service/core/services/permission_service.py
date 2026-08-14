@@ -20,7 +20,7 @@ DEFAULT_PERMISSIONS = [
     # ── GLOBAL CONTROLS ────────────────────────────────────────────────────
     {
         "tool_name": "GLOBAL_AGENT",
-        "display_name": "🚨 Global Agent (Emergency Stop)",
+        "display_name": "Global Agent (Emergency Stop)",
         "description": "Master switch — disabling this blocks ALL agent actions immediately. Use during emergencies.",
         "is_enabled": True,
         "category": "GLOBAL",
@@ -28,7 +28,7 @@ DEFAULT_PERMISSIONS = [
     },
     {
         "tool_name": "CRM",
-        "display_name": "🔌 CRM Integration (All CRM Access)",
+        "display_name": "CRM Integration (All CRM Access)",
         "description": "Master switch for all CRM tools. Disabling blocks every CRM call regardless of individual tool settings.",
         "is_enabled": True,
         "category": "SERVICE",
@@ -36,7 +36,7 @@ DEFAULT_PERMISSIONS = [
     },
     {
         "tool_name": "RAG",
-        "display_name": "📚 RAG / Knowledge Base Search",
+        "display_name": "RAG / Knowledge Base Search",
         "description": "Allows the agent to search the knowledge base to answer technical and service questions.",
         "is_enabled": True,
         "category": "SERVICE",
@@ -45,7 +45,7 @@ DEFAULT_PERMISSIONS = [
     # ── CRM TOOLS ───────────────────────────────────────────────────────────
     {
         "tool_name": "get_balance",
-        "display_name": "💰 Get Customer Balance",
+        "display_name": "Get Customer Balance",
         "description": "Fetches the current account balance and payment status for a customer from CRM.",
         "is_enabled": True,
         "category": "CRM_TOOL",
@@ -53,7 +53,7 @@ DEFAULT_PERMISSIONS = [
     },
     {
         "tool_name": "get_customer_info",
-        "display_name": "👤 Get Customer Info",
+        "display_name": "Get Customer Info",
         "description": "Retrieves full customer profile including name, address, plan, and contact info from CRM.",
         "is_enabled": True,
         "category": "CRM_TOOL",
@@ -61,7 +61,7 @@ DEFAULT_PERMISSIONS = [
     },
     {
         "tool_name": "get_current_package",
-        "display_name": "📦 Get Current Package",
+        "display_name": "Get Current Package",
         "description": "Returns the customer's active subscription package details from CRM.",
         "is_enabled": True,
         "category": "CRM_TOOL",
@@ -69,7 +69,7 @@ DEFAULT_PERMISSIONS = [
     },
     {
         "tool_name": "get_available_packages",
-        "display_name": "📋 Get Available Packages",
+        "display_name": "Get Available Packages",
         "description": "Returns the list of available subscription packages that customers can upgrade to.",
         "is_enabled": True,
         "category": "CRM_TOOL",
@@ -77,7 +77,7 @@ DEFAULT_PERMISSIONS = [
     },
     {
         "tool_name": "get_invoices",
-        "display_name": "🧾 Get Invoices / Billing History",
+        "display_name": "Get Invoices / Billing History",
         "description": "Fetches billing history and invoice records for a customer from CRM.",
         "is_enabled": True,
         "category": "CRM_TOOL",
@@ -85,7 +85,7 @@ DEFAULT_PERMISSIONS = [
     },
     {
         "tool_name": "open_ticket",
-        "display_name": "🎫 Open / Create Support Ticket",
+        "display_name": "Open / Create Support Ticket",
         "description": "Creates a new support ticket in the CRM on behalf of a customer. WRITE operation.",
         "is_enabled": True,
         "category": "CRM_TOOL",
@@ -93,7 +93,7 @@ DEFAULT_PERMISSIONS = [
     },
     {
         "tool_name": "check_phone_number",
-        "display_name": "📞 Check Phone Number (Auth)",
+        "display_name": "Check Phone Number (Auth)",
         "description": "Verifies a customer's phone number against CRM records for authentication.",
         "is_enabled": True,
         "category": "CRM_TOOL",

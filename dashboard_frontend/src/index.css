@@ -50,8 +50,12 @@
 
 html, body { margin: 0; padding: 0; width: 100%; height: 100%; }
 
+body, button, input, select, textarea, table, th, td, h1, h2, h3, h4, h5, h6, span, p, div, a {
+  font-family: 'Cairo', 'Tajawal', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
 body {
-  font-family: 'Public Sans', 'Cairo', sans-serif;
+  font-family: 'Cairo', 'Tajawal', sans-serif;
   font-size: 14px;
   line-height: 1.5;
   color: var(--text-primary);
@@ -61,7 +65,7 @@ body {
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: 'Public Sans', 'Cairo', sans-serif;
+  font-family: 'Cairo', 'Tajawal', sans-serif;
   font-weight: 700;
   color: var(--text-primary);
   margin: 0;
@@ -208,6 +212,11 @@ select.hcn-input { cursor: pointer; }
 .hcn-btn-icon:hover {
   background: var(--bg-neutral);
   color: var(--text-primary);
+}
+.hcn-btn-icon:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 /* ── Badge / Chip ── */
@@ -398,10 +407,58 @@ select.hcn-input { cursor: pointer; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(145, 158, 171, 0.40); }
 
 /* ── Helpers ── */
-.animate-fade-in  { animation: fadeIn  0.25s ease forwards; }
-.animate-slide-in { animation: slideIn 0.25s ease forwards; }
-.animate-scale-in { animation: scaleIn 0.2s ease forwards;  }
+/* ── Modal Dialog ── */
+.hcn-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(33, 43, 54, 0.65);
+  backdrop-filter: blur(6px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: fadeIn 0.2s ease;
+}
+
+.hcn-modal {
+  background: var(--bg-paper);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.28);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  animation: scaleIn 0.2s ease;
+  border: 1px solid var(--border);
+}
+
+/* ── Floating Batch Bar ── */
+.hcn-batch-bar {
+  position: fixed;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--text-primary);
+  color: #fff;
+  padding: 12px 24px;
+  border-radius: var(--radius-xl);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  z-index: 1000;
+  animation: slideUp 0.25s ease;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translate(-50%, 20px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
 
 @keyframes fadeIn    { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes slideIn   { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes scaleIn   { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+

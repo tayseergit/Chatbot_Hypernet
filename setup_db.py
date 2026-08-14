@@ -1,15 +1,26 @@
-import pymysql
+import sqlite3
 
-conn = pymysql.connect(host='localhost', user='root', password='', port=3306, autocommit=True)
-cur = conn.cursor()
+db_path = 'chatbot.db'
+sql_path = 'database_setup.sql'
 
-cur.execute("CREATE DATABASE IF NOT EXISTS isp_chatbot CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
-print("Database 'isp_chatbot' ready.")
+with open(sql_path, 'r', encoding='utf-8') as f:
+    sql = f.read()
 
-cur.execute("CREATE USER IF NOT EXISTS 'chatbot_user'@'localhost' IDENTIFIED BY 'chatbot_pass'")
-cur.execute("GRANT ALL PRIVILEGES ON isp_chatbot.* TO 'chatbot_user'@'localhost'")
-cur.execute("FLUSH PRIVILEGES")
-print("User 'chatbot_user' created and granted access.")
-
+conn = sqlite3.connect(db_path)
+conn.executescript(sql)
 conn.close()
-print("All done!")
+print('Database created successfully!')
+
+conn2 = sqlite3.connect(db_path)
+cur = conn2.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+print('Tables:')
+for row in cur.fetchall():
+    print(f'  - {row[0]}')
+
+cur2 = conn2.execute("SELECT tool_name, is_enabled, category, risk_level FROM agent_permissions")
+print('\nPermissions seeded:')
+for row in cur2.fetchall():
+    status = 'ON' if row[1] else 'OFF'
+    print(f'  [{status}] {row[0]} ({row[2]}, {row[3]})')
+
+conn2.close()

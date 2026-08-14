@@ -1,28 +1,29 @@
-# AI ISP Chatbot Platform — Dependencies
+# AI ISP Chatbot Platform — Complete Dependencies
 
-# Core
+# Core & Web API
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+python-multipart>=0.0.9
+pydantic>=2.6.0
+httpx>=0.27.0
 requests>=2.31.0
+python-dotenv>=1.0.0
 
-# LLM / Embeddings
-sentence-transformers>=2.2.0
+# Database (SQLAlchemy & MySQL)
+sqlalchemy>=2.0.0
+pymysql>=1.1.0
+cryptography>=42.0.0
 
-# Vector Database
-chromadb>=0.4.0
-
-# Excel file reading (RAG knowledge base)
+# RAG & Knowledge Base
+scikit-learn>=1.4.0
+pymupdf>=1.24.0
 pandas>=2.0.0
 openpyxl>=3.1.0
 xlrd>=2.0.0
 
-# MySQL Database
-pymysql>=1.1.0
-
-# Telegram Bot (optional — for presentation layer)
+# Telegram Bot
 python-telegram-bot>=20.0
 
-# Utilities
-python-dotenv>=1.0.0
-
-fastapi
-uvicorn
-python-multipart
+# Optional Vector & ML
+sentence-transformers>=2.2.0
+chromadb>=0.4.0

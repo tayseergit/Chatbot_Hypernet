@@ -1,17 +1,11 @@
-import React, { useState } from 'react';
-import { Settings, Database, Save, CheckCircle2, Server } from 'lucide-react';
+import React from 'react';
+import { Settings, Database, CheckCircle2, Server } from 'lucide-react';
 
 export default function SettingsTab() {
-  const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434');
-  const [model, setModel]         = useState('llama3');
-  const [dbHost, setDbHost]       = useState('localhost:3306');
-  const [dbName, setDbName]       = useState('isp_chatbot');
-  const [saved, setSaved]         = useState(false);
-
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
-  };
+  const ollamaUrl = import.meta.env.VITE_LLM_URL  || 'http://localhost:11434';
+  const model     = import.meta.env.VITE_LLM_MODEL || 'llama3';
+  const dbHost    = import.meta.env.VITE_DB_HOST   || 'localhost:3306';
+  const dbName    = import.meta.env.VITE_DB_NAME   || 'chatbot_hypernet';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 32, maxWidth: 960, margin: '0 auto', width: '100%' }}>
@@ -28,17 +22,9 @@ export default function SettingsTab() {
             <span style={{ color: 'var(--text-primary)' }}>الإعدادات</span>
           </div>
         </div>
-        <button onClick={handleSave} className="hcn-btn-primary">
-          {saved ? <CheckCircle2 size={20} /> : <Save size={20} />}
-          {saved ? 'تم الحفظ!' : 'حفظ التغييرات'}
-        </button>
       </div>
 
-      {saved && (
-        <div className="animate-slide-in" style={{ padding: '16px 24px', borderRadius: 12, background: 'var(--success-bg)', color: 'var(--success)', border: '1px solid rgba(0, 171, 85, 0.2)', fontWeight: 700, fontSize: 14 }}>
-          تم حفظ الإعدادات بنجاح
-        </div>
-      )}
+
 
       {/* ── إعدادات النموذج ── */}
       <div className="hcn-card" style={{ padding: 32 }}>
@@ -57,17 +43,13 @@ export default function SettingsTab() {
             <label style={{ display: 'block', fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
               عنوان Ollama
             </label>
-            <input type="text" value={ollamaUrl} onChange={(e) => setOllamaUrl(e.target.value)} className="hcn-input font-mono-data" style={{ padding: '12px 16px', fontSize: 14 }} />
+            <input type="text" value={ollamaUrl} readOnly className="hcn-input font-mono-data" style={{ padding: '12px 16px', fontSize: 14, opacity: 0.8 }} />
           </div>
           <div>
             <label style={{ display: 'block', fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
               النموذج المختار
             </label>
-            <select value={model} onChange={(e) => setModel(e.target.value)} className="hcn-input font-mono-data" style={{ padding: '12px 16px', fontSize: 14 }}>
-              <option value="llama3">llama3:latest</option>
-              <option value="mistral">mistral:7b</option>
-              <option value="qwen">qwen2:7b</option>
-            </select>
+            <input type="text" value={model} readOnly className="hcn-input font-mono-data" style={{ padding: '12px 16px', fontSize: 14, opacity: 0.8 }} />
           </div>
         </div>
 
@@ -92,11 +74,11 @@ export default function SettingsTab() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 24 }}>
           <div>
             <label style={{ display: 'block', fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>اسم قاعدة البيانات</label>
-            <input type="text" value={dbName} onChange={(e) => setDbName(e.target.value)} className="hcn-input font-mono-data" style={{ padding: '12px 16px', fontSize: 14 }} />
+            <input type="text" value={dbName} readOnly className="hcn-input font-mono-data" style={{ padding: '12px 16px', fontSize: 14, opacity: 0.8 }} />
           </div>
           <div>
             <label style={{ display: 'block', fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>عنوان الخادم</label>
-            <input type="text" value={dbHost} onChange={(e) => setDbHost(e.target.value)} className="hcn-input font-mono-data" style={{ padding: '12px 16px', fontSize: 14 }} />
+            <input type="text" value={dbHost} readOnly className="hcn-input font-mono-data" style={{ padding: '12px 16px', fontSize: 14, opacity: 0.8 }} />
           </div>
           <div>
             <label style={{ display: 'block', fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>سجل العمليات</label>
@@ -121,7 +103,7 @@ export default function SettingsTab() {
             { label: 'النموذج اللغوي', value: 'Ollama (محلي)' },
             { label: 'قاعدة المعرفة',  value: 'ChromaDB (RAG)' },
             { label: 'الواجهة الأمامية', value: 'React + Vite' },
-            { label: 'قاعدة البيانات', value: 'SQLite / MySQL' },
+            { label: 'قاعدة البيانات', value: 'MySQL (isp_chatbot)' },
             { label: 'الإصدار',        value: 'v2.0 — إنتاج' },
           ].map((item) => (
             <div key={item.label} style={{ padding: '16px 20px', background: 'var(--bg-neutral)', borderRadius: 12, border: '1px solid var(--border)' }}>

@@ -10,26 +10,27 @@ import {
   FlaskConical,
   Wifi,
   ShieldCheck,
+  Megaphone,
 } from 'lucide-react';
 
 const sections = [
   {
     title: 'نظرة عامة',
     items: [
-      { id: 'overview',    label: 'الرئيسية',           icon: LayoutDashboard },
-      { id: 'analytics',   label: 'الإحصائيات',        icon: BarChart3 },
-      { id: 'sessions',    label: 'المحادثات والجلسات',icon: MessageSquare },
+      { id: 'overview',      label: 'الرئيسية',           icon: LayoutDashboard },
+      { id: 'analytics',     label: 'الإحصائيات',         icon: BarChart3 },
+      { id: 'sessions',      label: 'المحادثات والجلسات',  icon: MessageSquare },
     ]
   },
   {
     title: 'الإدارة',
     items: [
-      { id: 'crm',         label: 'العملاء',           icon: Users },
-      { id: 'actions',     label: 'سجل العمليات',        icon: FileText },
-      { id: 'rag',         label: 'قاعدة المعرفة',      icon: BookOpen },
-      { id: 'permissions', label: 'الصلاحيات',          icon: ShieldCheck },
-      { id: 'playground',  label: 'بيئة الاختبار',      icon: FlaskConical },
-      { id: 'settings',    label: 'الإعدادات',           icon: Settings },
+      { id: 'crm',           label: 'المشتركين',          icon: Users },
+      { id: 'notifications', label: 'بث الإشعارات',       icon: Megaphone },
+      { id: 'rag',           label: 'قاعدة المعرفة',       icon: BookOpen },
+      { id: 'permissions',   label: 'الصلاحيات',          icon: ShieldCheck },
+      { id: 'playground',    label: 'بيئة الاختبار',       icon: FlaskConical },
+      { id: 'settings',      label: 'الإعدادات',           icon: Settings },
     ]
   }
 ];

@@ -1,91 +1,82 @@
 """
-<<<<<<< HEAD
-Tool Executor that communicates with the Hypernet CRM API.
-=======
-Tool Executor — makes HTTP requests to the Mock CRM API.
+Tool Executor — connects CRM tools directly to the live HyperCRM API.
 
 LAYER 3 ENFORCEMENT: Final hard guard before any HTTP call to CRM.
 Even if Layer 2 (WorkflowCoordinator) is bypassed somehow, this layer
 checks permissions again before sending any data to the CRM system.
-
-This is the last line of defense — no CRM HTTP call happens without clearance.
->>>>>>> c78e952 (feat: add dashboard frontend, permissions system, action logs, and new database setup)
 """
 import os
-import requests
 from application.monitoring.logger import AppLogger
 from application.shared.exceptions.permission_exceptions import (
     PermissionDeniedException,
     AgentEmergencyStopException,
 )
+from backend_service.crm.crm_client import CRMClient
 
 logger = AppLogger.get_logger("tool_executor")
-CRM_BASE_URL = os.getenv("CRM_BASE_URL", "http://localhost:8090/api/crm")
 
 
 class ToolExecutor:
     """
-    Executes CRM tools via HTTP.
-
-    Constructor accepts an optional permission_service for Layer 3 enforcement.
-    When permission_service is provided, every tool call is verified AGAIN
-    before any network request is made to the CRM.
+    Executes live HyperCRM tools via CRMClient with token auth and Layer 3 permission guards.
     """
 
     def __init__(self, permission_service=None):
         self._permission_svc = permission_service
+        self._crm_client = CRMClient()
 
     def execute(self, tool_name: str, parameters: dict, session_id: str = None):
         # ── LAYER 3: Final hard check before ANY HTTP call ─────────────────
         if self._permission_svc:
-            # Check global emergency stop
             if not self._permission_svc.is_allowed("GLOBAL_AGENT"):
-                logger.critical(
-                    f"[LAYER 3 BLOCK] GLOBAL_AGENT disabled — '{tool_name}' BLOCKED at ToolExecutor"
-                )
+                logger.critical(f"[LAYER 3 BLOCK] GLOBAL_AGENT disabled — '{tool_name}' BLOCKED")
                 raise AgentEmergencyStopException()
 
-            # Check CRM master switch
             if not self._permission_svc.is_allowed("CRM"):
-                logger.critical(
-                    f"[LAYER 3 BLOCK] CRM service disabled — '{tool_name}' BLOCKED at ToolExecutor"
-                )
+                logger.critical(f"[LAYER 3 BLOCK] CRM service disabled — '{tool_name}' BLOCKED")
                 raise PermissionDeniedException(
                     tool_name="CRM",
                     reason="All CRM access has been suspended by an administrator."
                 )
 
-            # Check the specific tool
             if not self._permission_svc.is_allowed(tool_name):
-                logger.warning(
-                    f"[LAYER 3 BLOCK] Tool '{tool_name}' BLOCKED at ToolExecutor (final guard)"
-                )
+                logger.warning(f"[LAYER 3 BLOCK] Tool '{tool_name}' BLOCKED")
                 raise PermissionDeniedException(
                     tool_name=tool_name,
                     reason=f"The action '{tool_name}' is currently disabled. Please contact support."
                 )
         # ──────────────────────────────────────────────────────────────────
 
-        logger.info(f"Executing tool '{tool_name}' with params {parameters}")
+        logger.info(f"Executing tool '{tool_name}' against real HyperCRM with params {parameters}")
 
         try:
-            customer_id = parameters.get("crm_customer_id")
+            customer_id = parameters.get("crm_customer_id") or parameters.get("customer_id")
 
-            if tool_name == "get_balance":
+            if tool_name in ("get_balance", "get_current_package", "get_customer_info"):
                 if not customer_id:
-                    return {"success": False, "error": "Customer ID required"}
-                response = requests.get(f"{CRM_BASE_URL}/customers/{customer_id}/balance", timeout=5)
-                return {"success": response.status_code == 200, "data": response.json()}
+                    return {"success": False, "error": "Customer ID is required."}
+                
+                # Fetch user overview from real HyperCRM API
+                overview_res = self._crm_client.get_user_overview(str(customer_id))
+                if overview_res.get("success") and "data" in overview_res:
+                    return {"success": True, "data": overview_res["data"]}
+                return overview_res
 
-            elif tool_name in ("get_current_package", "get_customer_info"):
+            elif tool_name == "get_invoices":
                 if not customer_id:
-                    return {"success": False, "error": "Customer ID required"}
-                response = requests.get(f"{CRM_BASE_URL}/customers/{customer_id}", timeout=5)
-                return {"success": response.status_code == 200, "data": response.json()}
+                    return {"success": False, "error": "Customer ID is required."}
+                return self._crm_client.get_user_invoices(str(customer_id))
+
+            elif tool_name == "extend_bill":
+                username = parameters.get("username")
+                if not username:
+                    return {"success": False, "error": "Username is required."}
+                return self._crm_client.extend_user_bill(username)
 
             elif tool_name == "check_phone_number":
-                # Handled locally in AuthenticationService
-                return {"success": True, "data": {"message": "Phone check executed."}}
+                phone = parameters.get("phone", "")
+                res = self._crm_client.search_user_by_phone(phone)
+                return res
 
 <<<<<<< HEAD
                     # Try to fetch IPTV expiration if they are subscribed
@@ -246,6 +237,7 @@ class ToolExecutor:
                 return {"success": True, "data": data}
                 
             elif tool_name == "open_ticket":
+<<<<<<< HEAD
                 if not self._crm_client:
                     return {"success": False, "error": "CRMClient not configured"}
                 url = f"{self._crm_client._auth_manager._base_url}/tickets"
@@ -323,15 +315,23 @@ class ToolExecutor:
                     return {"success": False, "error": "CRMClient not configured"}
                 limit = parameters.get("limit", 30)
                 return self._crm_client.get_user_sessions(customer_id, limit)
+=======
+                # Create ticket in real HyperCRM
+                return self._crm_client.post(
+                    f"{self._crm_client._auth_manager._base_url}/tickets",
+                    parameters
+                )
+>>>>>>> 79b10e8 (feat: complete dashboard frontend with integrated action logs, enterprise copy, and pure MySQL setup)
 
             else:
-                return {"success": False, "error": f"Tool '{tool_name}' is not implemented in ToolExecutor."}
+                # Direct method dispatch if available on CRMClient
+                if hasattr(self._crm_client, tool_name):
+                    method = getattr(self._crm_client, tool_name)
+                    return method(**parameters)
+                return {"success": False, "error": f"Tool '{tool_name}' is not recognized."}
 
         except (PermissionDeniedException, AgentEmergencyStopException):
-            raise  # never swallow permission errors
-        except requests.RequestException as e:
-            logger.error(f"CRM API request failed: {e}")
-            return {"success": False, "error": f"Failed to connect to CRM API: {e}"}
+            raise
         except Exception as e:
-            logger.error(f"Tool execution error: {e}")
-            return {"success": False, "error": str(e)}
+            logger.error(f"Tool execution error against HyperCRM: {e}")
+            return {"success": False, "error": f"فشل الاتصال بنظام CRM: {str(e)}"}

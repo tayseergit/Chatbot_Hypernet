@@ -9,22 +9,23 @@ import KnowledgeBaseTab from './components/KnowledgeBaseTab';
 import TestPlaygroundTab from './components/TestPlaygroundTab';
 import SettingsTab from './components/SettingsTab';
 import PermissionsTab from './components/PermissionsTab';
+import BroadcastTab from './components/BroadcastTab';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('crm');
+  const [activeTab, setActiveTab] = useState('overview');
 
   const renderActiveTab = () => {
     switch (activeTab) {
-      case 'overview':    return <OverviewTab setActiveTab={setActiveTab} />;
-      case 'actions':     return <AgentActionLogsTab />;
-      case 'sessions':    return <SessionsChatTab />;
-      case 'analytics':   return <AnalyticsTab />;
-      case 'crm':         return <CrmLookupTab />;
-      case 'rag':         return <KnowledgeBaseTab />;
-      case 'playground':  return <TestPlaygroundTab />;
-      case 'permissions': return <PermissionsTab />;
-      case 'settings':    return <SettingsTab />;
-      default:            return <CrmLookupTab />;
+      case 'overview':      return <OverviewTab setActiveTab={setActiveTab} />;
+      case 'sessions':      return <SessionsChatTab />;
+      case 'analytics':     return <AnalyticsTab />;
+      case 'crm':           return <CrmLookupTab />;
+      case 'notifications': return <BroadcastTab />;
+      case 'rag':           return <KnowledgeBaseTab />;
+      case 'playground':    return <TestPlaygroundTab />;
+      case 'permissions':   return <PermissionsTab />;
+      case 'settings':      return <SettingsTab />;
+      default:              return <CrmLookupTab />;
     }
   };
 

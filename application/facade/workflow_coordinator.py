@@ -34,6 +34,7 @@ class WorkflowCoordinator:
         message_text: str,
         session_id: str = None,
         customer_id: str = None,
+        history: str = None,
     ) -> Dict[str, Any]:
         """Execute required services and gather results to generate an LLM response.
 
@@ -65,7 +66,9 @@ class WorkflowCoordinator:
             rag_data = rag_result.data if rag_result.success else []
 
             # Format RAG context as string
-            if isinstance(rag_data, list):
+            if isinstance(rag_data, dict):
+                rag_context = rag_data.get("context", "") or str(rag_data)
+            elif isinstance(rag_data, list):
                 rag_context = "\n\n".join([str(item) for item in rag_data])
             else:
                 rag_context = str(rag_data)

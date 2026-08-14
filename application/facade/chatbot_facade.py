@@ -114,8 +114,8 @@ class ChatbotFacade:
 
     @log_operation()
     @track_metrics("handle_message")
-    @trace_operation("facade.handle_message")
-    def handle_message(self, user_id: str, message_text: str, image_bytes: Optional[bytes] = None, image_path: Optional[str] = None) -> ChatResponse:
+    @trace_operation("handle_message")
+    def handle_message(self, user_id: str, message_text: str, user_name: Optional[str] = None, image_bytes: Optional[bytes] = None, image_path: Optional[str] = None) -> ChatResponse:
         """
         Main entry point for an incoming chat message. — the MAIN entry point.
 
@@ -131,7 +131,7 @@ class ChatbotFacade:
         try:
             # 1. Session management via Backend
             t0 = time.time()
-            session = self._backend.session_service.get_or_create_session(user_id)
+            session = self._backend.session_service.get_or_create_session(user_id, user_name=user_name)
             msg_to_save = message_text
             if image_path:
                 import os
@@ -167,7 +167,7 @@ class ChatbotFacade:
                 tool_name="intent_classifier",
                 parameters={"requires": decision.requires, "parameters": decision.parameters},
                 status="SUCCESS",
-                result_summary={"confidence": decision.confidence, "explanation": decision.explanation},
+                result_summary={"confidence": decision.confidence, "reasoning": getattr(decision, 'reasoning', getattr(decision, 'explanation', ''))},
             )
 
             # Publish intent event
@@ -197,6 +197,7 @@ class ChatbotFacade:
                 image_bytes=image_bytes,
                 session_id=session.session_id,
                 customer_id=session.customer_id,
+                history=history_text,
             )
 
             t_workflow = (time.time() - t2) * 1000

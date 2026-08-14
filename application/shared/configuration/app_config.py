@@ -23,7 +23,7 @@ _config_data = load_config()
 
 try:
     from dotenv import load_dotenv
-    load_dotenv()
+    load_dotenv(BASE_DIR / ".env", override=True)
 except ImportError:
     pass
 
@@ -45,7 +45,7 @@ class RAGConfig:
     knowledge_file: str = "chatbot.xls"
     chunk_size: int = 350
     overlap: int = 50
-    embedding_model: str = r"models/paraphrase-multilingual-MiniLM-L12-v2"
+    embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     collection_name: str = "isp_knowledge"
     n_results: int = 10
     distance_threshold: float = 25.0
@@ -62,7 +62,7 @@ class LLMConfig:
     gemini_model: str = "gemini-3.1-flash-lite"
     ollama_url: str = "http://localhost:11434/api/generate"
     ollama_model: str = "dagbs/qwen2.5-coder-7b-instruct-abliterated:latest"
-    lmstudio_url: str = "http://localhost:1234/v1/chat/completions"
+    lmstudio_url: str = "http://127.0.0.1:1234/v1/chat/completions"
     lmstudio_model: str = "local-model"
     temperature: float = 0.1
     top_p: float = 0.8
