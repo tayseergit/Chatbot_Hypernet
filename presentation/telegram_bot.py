@@ -54,7 +54,7 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("reset", self._handle_logout))
         self._app.add_handler(CallbackQueryHandler(self._handle_callback_query))
         self._app.add_handler(
-            MessageHandler((filters.TEXT | filters.CONTACT | filters.PHOTO) & ~filters.COMMAND, self._handle_message)
+            MessageHandler((filters.TEXT | filters.CONTACT | filters.PHOTO | filters.VOICE | filters.AUDIO) & ~filters.COMMAND, self._handle_message)
         )
 
         self._logger.info("Telegram bot started — polling for messages...")
@@ -259,6 +259,46 @@ class TelegramBot:
                 
             except Exception as e:
                 self._logger.error(f"Failed to download photo: {e}")
+        elif message.voice or message.audio:
+            media = message.voice or message.audio
+            
+            # File size limit check (5 MB)
+            if media.file_size > 5 * 1024 * 1024:
+                await message.reply_text("❌ عذراً، حجم المقطع الصوتي كبير جداً (يجب أن لا يتجاوز 5 ميغابايت).")
+                return
+
+            await message.chat.send_action("record_voice")
+            message_text = None
+            try:
+                media_file = await media.get_file()
+                byte_array = await media_file.download_as_bytearray()
+                
+                import os, time
+                media_dir = os.path.join(os.getcwd(), "media")
+                os.makedirs(media_dir, exist_ok=True)
+                
+                ext = ".ogg" if message.voice else ".mp3"
+                file_path = os.path.join(media_dir, f"voice_{user_id}_{int(time.time())}{ext}")
+                with open(file_path, "wb") as f:
+                    f.write(byte_array)
+                
+                self._logger.info(f"Saved voice message to {file_path}. Transcribing...")
+                
+                from application.shared.utils.transcriber import AudioTranscriber
+                transcriber = AudioTranscriber()
+                message_text = await asyncio.to_thread(transcriber.transcribe, file_path)
+                image_path = file_path  # Set this so it gets stored in DB
+                
+                self._logger.info(f"Transcription result: {message_text}")
+                
+                if not message_text:
+                    await message.reply_text("❌ عذراً، لم أتمكن من فهم المقطع الصوتي.")
+                    return
+                    
+            except Exception as e:
+                self._logger.error(f"Failed to process voice message: {e}")
+                await message.reply_text("❌ حدث خطأ أثناء معالجة المقطع الصوتي.")
+                return
         else:
             message_text = message.text
 

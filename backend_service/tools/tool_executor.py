@@ -233,86 +233,91 @@ class ToolExecutor:
                         
                     # Only fetch and inject the packages if the requested tool is get_available_packages
                     if tool_name == "get_available_packages":
-                        user_balance = 0.0
-                        if "balance" in data:
-                            try:
-                                user_balance = float(data["balance"])
-                            except (ValueError, TypeError):
-                                pass
-
-                        used_loan_amount = 0.0
-                        inv_res = self._crm_client.get_user_invoices(customer_id)
-                        logger.info(f"Fetched invoices for {customer_id}: {inv_res}")
-                        if inv_res.get("success") and "data" in inv_res:
-                            inv_data_payload = inv_res["data"]
-                            inv_data = []
-                            if isinstance(inv_data_payload, dict):
-                                inv_data = inv_data_payload.get("data", [])
-                            elif isinstance(inv_data_payload, list):
-                                inv_data = inv_data_payload
-                            for inv in inv_data:
-                                if isinstance(inv, dict):
-                                    paid_val = inv.get("paid")
-                                    is_unpaid = (paid_val == 0 or paid_val == "0" or paid_val is False)
-                                    if inv.get("type") == "pkg_activation" and is_unpaid:
-                                        amt = 0.0
-                                        try:
-                                            amt = float(inv.get("amount", inv.get("total", 0)))
-                                        except:
-                                            pass
-                                        used_loan_amount += amt
-
-                        res_pkg = self._crm_client.get_available_packages(customer_id)
-                        if res_pkg.get("success") and "data" in res_pkg:
-                            api_json = res_pkg["data"]
-                            if isinstance(api_json, dict) and "data" in api_json:
-                                packages = api_json["data"]
-                                if isinstance(packages, list):
-                                    filtered_packages = []
-                                    for p in packages:
-                                        if p.get("enabled"):
-                                            quota_mb_str = p.get("quota_mb", "0")
-                                            try:
-                                                quota_gb = float(quota_mb_str) / 1024
-                                            except ValueError:
-                                                quota_gb = 0
-                                                
-                                            pkg_price = 0.0
-                                            try:
-                                                pkg_price = float(p.get("price", 0))
-                                            except ValueError:
-                                                pass
-
-                                            pkg_id = p.get("id")
-                                            pkg_name = p.get("name", "")
-                                            
-                                            can_activate = False
-                                            loan_note = ""
-                                            if user_balance >= pkg_price:
-                                                can_activate = True
-                                            else:
-                                                if (used_loan_amount + pkg_price) <= 50:
-                                                    can_activate = True
-                                                    loan_note = " (ستتم إضافة التكلفة كسلفة على الفاتورة القادمة)"
-                                            
-                                            if can_activate:
-                                                filtered_packages.append({
-                                                    "name": pkg_name + loan_note,
-                                                    "quota_gb": f"{quota_gb:g} GB",
-                                                    "price": p.get("price")
-                                                })
-                                                notes.append(f'[ACTION_BUTTON: {{"text": "تفعيل {pkg_name}", "callback_data": "req_activate_pkg_{pkg_id}"}}]')
-                                            else:
-                                                filtered_packages.append({
-                                                    "name": pkg_name + " (الرصيد غير كافٍ)",
-                                                    "quota_gb": f"{quota_gb:g} GB",
-                                                    "price": p.get("price")
-                                                })
-                                                
-                                    data["available_topup_packages"] = filtered_packages
-                                    
-                        if notes:
+                        if 'user_profile_type' in locals() and user_profile_type == 4:
+                            notes.append("تنبيه هام جداً: العميل يمتلك باقة غير محدودة (Unlimited)، لذلك يمنع منعاً باتاً تفعيل أي باقات إضافية له.")
                             data["ai_business_logic_notes"] = notes
+                            data["available_topup_packages"] = []
+                        else:
+                            user_balance = 0.0
+                            if "balance" in data:
+                                try:
+                                    user_balance = float(data["balance"])
+                                except (ValueError, TypeError):
+                                    pass
+
+                            used_loan_amount = 0.0
+                            inv_res = self._crm_client.get_user_invoices(customer_id)
+                            logger.info(f"Fetched invoices for {customer_id}: {inv_res}")
+                            if inv_res.get("success") and "data" in inv_res:
+                                inv_data_payload = inv_res["data"]
+                                inv_data = []
+                                if isinstance(inv_data_payload, dict):
+                                    inv_data = inv_data_payload.get("data", [])
+                                elif isinstance(inv_data_payload, list):
+                                    inv_data = inv_data_payload
+                                for inv in inv_data:
+                                    if isinstance(inv, dict):
+                                        paid_val = inv.get("paid")
+                                        is_unpaid = (paid_val == 0 or paid_val == "0" or paid_val is False)
+                                        if inv.get("type") == "pkg_activation" and is_unpaid:
+                                            amt = 0.0
+                                            try:
+                                                amt = float(inv.get("amount", inv.get("total", 0)))
+                                            except:
+                                                pass
+                                            used_loan_amount += amt
+
+                            res_pkg = self._crm_client.get_available_packages(customer_id)
+                            if res_pkg.get("success") and "data" in res_pkg:
+                                api_json = res_pkg["data"]
+                                if isinstance(api_json, dict) and "data" in api_json:
+                                    packages = api_json["data"]
+                                    if isinstance(packages, list):
+                                        filtered_packages = []
+                                        for p in packages:
+                                            if p.get("enabled"):
+                                                quota_mb_str = p.get("quota_mb", "0")
+                                                try:
+                                                    quota_gb = float(quota_mb_str) / 1024
+                                                except ValueError:
+                                                    quota_gb = 0
+                                                    
+                                                pkg_price = 0.0
+                                                try:
+                                                    pkg_price = float(p.get("price", 0))
+                                                except ValueError:
+                                                    pass
+
+                                                pkg_id = p.get("id")
+                                                pkg_name = p.get("name", "")
+                                                
+                                                can_activate = False
+                                                loan_note = ""
+                                                if user_balance >= pkg_price:
+                                                    can_activate = True
+                                                else:
+                                                    if (used_loan_amount + pkg_price) <= 50:
+                                                        can_activate = True
+                                                        loan_note = " (ستتم إضافة التكلفة كسلفة على الفاتورة القادمة)"
+                                                
+                                                if can_activate:
+                                                    filtered_packages.append({
+                                                        "name": pkg_name + loan_note,
+                                                        "quota_gb": f"{quota_gb:g} GB",
+                                                        "price": p.get("price")
+                                                    })
+                                                    notes.append(f'[ACTION_BUTTON: {{"text": "تفعيل {pkg_name}", "callback_data": "req_activate_pkg_{pkg_id}"}}]')
+                                                else:
+                                                    filtered_packages.append({
+                                                        "name": pkg_name + " (الرصيد غير كافٍ)",
+                                                        "quota_gb": f"{quota_gb:g} GB",
+                                                        "price": p.get("price")
+                                                    })
+                                                    
+                                        data["available_topup_packages"] = filtered_packages
+                                        
+                            if notes:
+                                data["ai_business_logic_notes"] = notes
                         
                 return response
                 

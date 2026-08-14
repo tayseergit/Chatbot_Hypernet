@@ -123,7 +123,8 @@ class ChatbotFacade:
             msg_to_save = message_text
             if image_path:
                 import os
-                msg_to_save = f"{message_text} [Attached Image: {os.path.basename(image_path)}]"
+                media_type = "Voice" if image_path.lower().endswith((".ogg", ".mp3", ".wav", ".m4a")) else "Image"
+                msg_to_save = f"{message_text} [Attached {media_type}: {os.path.basename(image_path)}]"
             self._backend.message_service.save_messages(session.session_id, "user", msg_to_save)
             t_session = (time.time() - t0) * 1000
             self._logger.info(
@@ -273,6 +274,12 @@ class ChatbotFacade:
                     pkg_id = int(pkg_id_str)
                 except ValueError:
                     return "❌ معرف الباقة غير صالح."
+
+                # 0. Check if user is unlimited
+                overview = self._backend.crm_client.get_user_overview(session.customer_id)
+                if overview.get("success") and "data" in overview:
+                    if overview["data"].get("profile_type") == 4 or str(overview["data"].get("profile_type")) == "4":
+                        return "❌ عذراً، لا يمكنك تفعيل باقات إضافية لأن اشتراكك الحالي غير محدود (Unlimited)."
 
                 # 1. Fetch package details
                 pkg_res = self._backend.crm_client.get_available_packages(session.customer_id)

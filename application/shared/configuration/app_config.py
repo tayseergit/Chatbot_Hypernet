@@ -76,6 +76,7 @@ class CRMConfig:
     timeout: int = 30
     max_retries: int = 3
     retry_delay: float = 1.0
+    renewal_day: int = 3
 
 
 @dataclass
@@ -181,6 +182,7 @@ class AppConfig:
         config.crm.base_url = os.getenv("CRM_BASE_URL", config.crm.base_url)
         config.crm.api_key = os.getenv("CRM_API_KEY", config.crm.api_key)
         config.crm.timeout = int(os.getenv("CRM_TIMEOUT", config.crm.timeout))
+        config.crm.renewal_day = int(os.getenv("ISP_RENEWAL_DAY", config.crm.renewal_day))
 
         # Database (MySQL)
         config.database.host = os.getenv("DB_HOST", config.database.host)
