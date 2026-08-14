@@ -8,6 +8,9 @@ from application.shared.configuration.app_config import LLMConfig
 from application.shared.exceptions.app_exceptions import LLMInferenceError
 
 
+from application.shared.utils.tracer import trace_all_methods
+
+@trace_all_methods
 class GeminiProvider:
     """HTTP client for Google Gemini REST API."""
 

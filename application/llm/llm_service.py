@@ -20,6 +20,9 @@ from application.aspects.exception_aspect import handle_exceptions
 from backend_service.core.services.crm_log_service import CRMLogService
 
 
+from application.shared.utils.tracer import trace_all_methods
+
+@trace_all_methods
 class LLMService:
     """
     Main LLM orchestrator.

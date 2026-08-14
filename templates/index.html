@@ -3,282 +3,628 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CRM API Logs Dashboard</title>
-    <!-- Use Inter font for a modern look -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <title>Hypernet Analytics & Tracing</title>
+    <!-- Use Inter and Fira Code for a clean, professional look -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-color: #0f172a; /* Tailwind slate-900 */
-            --panel-bg: #1e293b; /* Tailwind slate-800 */
-            --text-main: #f8fafc; /* Tailwind slate-50 */
-            --text-muted: #94a3b8; /* Tailwind slate-400 */
-            --border-color: #334155; /* Tailwind slate-700 */
-            --accent-color: #3b82f6; /* Tailwind blue-500 */
-            --success-color: #10b981; /* Tailwind emerald-500 */
-            --error-color: #ef4444; /* Tailwind red-500 */
-            --hover-bg: #2dd4bf1a;
+            /* Company Light Theme Colors */
+            --bg-sidebar: #1f2937; /* Dark slate */
+            --bg-sidebar-hover: #374151;
+            --bg-main: #f3f4f6; /* Very light gray */
+            --bg-card: #ffffff;
+            --text-main: #1f2937;
+            --text-dim: #6b7280;
+            --text-sidebar: #d1d5db;
+            --accent: #10b981; /* Emerald green */
+            --accent-hover: #059669;
+            --border: #e5e7eb;
+            --success: #10b981;
+            --error: #ef4444;
+            --font-main: 'Inter', sans-serif;
+            --font-code: 'Fira Code', monospace;
         }
 
+        * { box-sizing: border-box; }
+        
         body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--bg-color);
+            font-family: var(--font-main);
+            background-color: var(--bg-main);
             color: var(--text-main);
             margin: 0;
-            padding: 2rem;
-            line-height: 1.5;
+            padding: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
         }
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
+        /* Sidebar Styles */
+        .sidebar {
+            width: 260px;
+            background-color: var(--bg-sidebar);
+            display: flex;
+            flex-direction: column;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            z-index: 10;
         }
 
-        header {
+        .sidebar-header {
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .logo {
+            font-family: 'Inter', sans-serif;
+            font-weight: 800;
+            font-size: 1.5rem;
+            letter-spacing: -0.5px;
+            color: var(--accent);
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .logo span { color: white; }
+        
+        .logo-subtitle {
+            font-size: 0.7rem;
+            color: var(--accent);
+            margin-top: 2px;
+            font-weight: 500;
+        }
+
+        .user-profile {
+            margin-top: 1.5rem;
+            background-color: rgba(255,255,255,0.05);
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            width: 100%;
+        }
+
+        .avatar {
+            width: 32px;
+            height: 32px;
+            background-color: var(--accent);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        .user-info {
+            color: white;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .sidebar-nav {
+            padding: 1.5rem 0;
+            flex: 1;
+        }
+        
+        .nav-section-title {
+            color: #6b7280;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            padding: 0 1.5rem;
+            margin-bottom: 0.75rem;
+            letter-spacing: 0.05em;
+        }
+
+        .nav-item {
+            padding: 0.75rem 1.5rem;
+            color: var(--text-sidebar);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.9rem;
+            font-weight: 500;
+            border-left: 3px solid transparent;
+        }
+
+        .nav-item:hover {
+            background-color: var(--bg-sidebar-hover);
+            color: white;
+        }
+
+        .nav-item.active {
+            background-color: rgba(16, 185, 129, 0.1);
+            color: white;
+            border-left-color: var(--accent);
+        }
+
+        /* Main Content Area */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .topbar {
+            background-color: white;
+            padding: 1rem 2rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 2rem;
-            padding-bottom: 1rem;
-            border-bottom: 1px solid var(--border-color);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            z-index: 5;
         }
 
-        h1 {
-            font-size: 1.875rem;
-            font-weight: 700;
-            margin: 0;
-            background: linear-gradient(to right, #60a5fa, #3b82f6);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+        .breadcrumb {
+            color: var(--text-dim);
+            font-size: 0.875rem;
+        }
+        .breadcrumb span { color: var(--text-main); font-weight: 500; }
+
+        .top-controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
         }
 
-        .refresh-btn {
-            background-color: var(--accent-color);
+        .btn-primary {
+            background-color: var(--accent);
             color: white;
             border: none;
             padding: 0.5rem 1rem;
             border-radius: 0.375rem;
-            font-weight: 500;
+            font-family: var(--font-main);
+            font-weight: 600;
+            font-size: 0.875rem;
             cursor: pointer;
-            transition: opacity 0.2s;
-            font-family: inherit;
+            transition: background-color 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
         }
 
-        .refresh-btn:hover {
-            opacity: 0.9;
+        .btn-primary:hover {
+            background-color: var(--accent-hover);
+        }
+
+        .content-wrapper {
+            padding: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .view-section {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .view-section.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* CRM Logs Table Styles */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
-            background-color: var(--panel-bg);
-            border-radius: 0.5rem;
-            overflow: hidden;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
         }
 
         th, td {
-            padding: 1rem;
+            padding: 1rem 1.5rem;
             text-align: left;
-            border-bottom: 1px solid var(--border-color);
+            border-bottom: 1px solid var(--border);
         }
 
         th {
-            background-color: rgba(0,0,0,0.2);
-            font-weight: 600;
-            color: var(--text-muted);
-            text-transform: uppercase;
+            background: #f9fafb;
+            color: var(--text-dim);
             font-size: 0.75rem;
-            letter-spacing: 0.05em;
-        }
-
-        tr:last-child td {
-            border-bottom: none;
+            text-transform: uppercase;
+            font-weight: 600;
         }
 
         tr {
-            transition: background-color 0.2s;
+            transition: background 0.1s;
             cursor: pointer;
         }
 
-        tr:hover {
-            background-color: rgba(255,255,255,0.03);
-        }
+        tr:hover { background: #f9fafb; }
 
         .method-badge {
-            display: inline-block;
-            padding: 0.25rem 0.5rem;
-            border-radius: 9999px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-
-        .method-GET { background-color: rgba(16, 185, 129, 0.2); color: #34d399; }
-        .method-POST { background-color: rgba(59, 130, 246, 0.2); color: #60a5fa; }
-        .method-LLM { background-color: rgba(167, 139, 250, 0.2); color: #c084fc; }
-
-        .status-badge {
-            display: inline-block;
             padding: 0.25rem 0.5rem;
             border-radius: 0.25rem;
-            font-size: 0.875rem;
-            font-weight: 500;
+            font-size: 0.75rem;
+            font-weight: 600;
         }
+        .method-GET { background: #dcfce7; color: #166534; }
+        .method-POST { background: #dbeafe; color: #1e40af; }
+        .method-LLM { background: #f3e8ff; color: #6b21a8; }
 
-        .status-success { background-color: rgba(16, 185, 129, 0.15); color: #34d399; }
-        .status-error { background-color: rgba(239, 68, 68, 0.15); color: #f87171; }
+        .status-success { color: var(--success); font-weight: 600; }
+        .status-error { color: var(--error); font-weight: 600; }
+        
+        .endpoint-text { font-family: var(--font-code); font-size: 0.85rem; color: #4b5563; }
 
-        .latency {
-            font-family: monospace;
-            color: var(--text-muted);
-        }
-
-        .endpoint {
-            font-family: monospace;
-            font-size: 0.875rem;
-            word-break: break-all;
-        }
-
-        /* Modal Styles */
-        .modal-overlay {
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background-color: rgba(0,0,0,0.7);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.2s;
-            z-index: 1000;
-        }
-
-        .modal-overlay.active {
-            opacity: 1;
-            pointer-events: auto;
-        }
-
-        .modal {
-            background-color: var(--panel-bg);
-            width: 90%;
-            max-width: 800px;
-            max-height: 90vh;
+        /* Traces Styles */
+        .trace-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
             border-radius: 0.5rem;
-            display: flex;
-            flex-direction: column;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            margin-bottom: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
 
-        .modal-header {
-            padding: 1.5rem;
-            border-bottom: 1px solid var(--border-color);
+        .trace-header {
+            background: #f9fafb;
+            padding: 1rem 1.5rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            border-bottom: 1px solid var(--border);
+            border-radius: 0.5rem 0.5rem 0 0;
         }
 
-        .modal-title {
-            font-size: 1.25rem;
-            font-weight: 600;
+        .trace-title {
+            font-family: var(--font-code);
+            font-size: 0.875rem;
+            color: #374151;
             margin: 0;
-            font-family: monospace;
-        }
-
-        .close-btn {
-            background: none;
-            border: none;
-            color: var(--text-muted);
-            font-size: 1.5rem;
-            cursor: pointer;
-            padding: 0;
-            line-height: 1;
-        }
-        .close-btn:hover { color: white; }
-
-        .modal-body {
-            padding: 1.5rem;
-            overflow-y: auto;
-        }
-
-        .json-block {
-            background-color: #000000;
-            padding: 1rem;
-            border-radius: 0.375rem;
-            overflow-x: auto;
-            font-family: monospace;
-            font-size: 0.875rem;
-            color: #a78bfa;
-            white-space: pre-wrap;
-            margin-top: 0.5rem;
-            margin-bottom: 1.5rem;
-            border: 1px solid var(--border-color);
-        }
-
-        .section-title {
-            font-size: 0.875rem;
             font-weight: 600;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 0.5rem;
         }
 
+        .trace-time {
+            font-weight: 600;
+            color: var(--success);
+            background: #dcfce7;
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+            font-size: 0.875rem;
+        }
+
+        .trace-body {
+            padding: 1.5rem;
+        }
+
+        /* Tree Styles */
+        .trace-tree { list-style: none; padding-left: 0; margin: 0; }
+        .trace-node { margin-bottom: 0.25rem; }
+        .trace-row {
+            display: flex; align-items: flex-start; padding: 0.5rem;
+            border-radius: 0.375rem; transition: background 0.2s;
+        }
+        .trace-row:hover { background: #f3f4f6; }
+        .trace-toggle {
+            cursor: pointer; padding: 0 0.5rem; color: var(--text-dim);
+            font-family: monospace; user-select: none; font-weight: bold;
+            min-width: 1.5rem;
+        }
+        .trace-content { flex: 1; display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem;}
+        .trace-name { font-family: var(--font-code); font-size: 0.85rem; font-weight: 500; color: #111827; }
+        .trace-duration { color: var(--text-dim); font-size: 0.75rem; font-weight: 500; }
+        
+        .trace-io-btn {
+            background: white; border: 1px solid var(--border);
+            color: var(--text-dim); font-size: 0.7rem; border-radius: 0.25rem;
+            padding: 0.2rem 0.5rem; cursor: pointer; transition: all 0.2s;
+            font-weight: 600; margin-left: 0.5rem;
+        }
+        .trace-io-btn:hover { border-color: var(--accent); color: var(--accent); background: #f0fdf4; }
+        
+        .trace-children { list-style: none; padding-left: 1.5rem; margin: 0; border-left: 1px solid var(--border); margin-left: 0.75rem; }
+        .trace-children.collapsed { display: none; }
+
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex; justify-content: center; align-items: center;
+            opacity: 0; pointer-events: none; transition: opacity 0.2s;
+            z-index: 1000;
+        }
+        .modal-overlay.active { opacity: 1; pointer-events: auto; }
+        .modal {
+            background: white;
+            width: 90%; max-width: 900px; max-height: 90vh;
+            border-radius: 0.5rem; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
+            display: flex; flex-direction: column;
+            transform: scale(0.98); transition: transform 0.2s;
+        }
+        .modal-overlay.active .modal { transform: scale(1); }
+        .modal-header {
+            padding: 1.5rem; border-bottom: 1px solid var(--border);
+            display: flex; justify-content: space-between; align-items: center;
+            background: #f9fafb; border-radius: 0.5rem 0.5rem 0 0;
+        }
+        .modal-title { font-family: var(--font-code); margin: 0; font-size: 1rem; color: #111827; }
+        .close-btn {
+            background: none; border: none; color: var(--text-dim);
+            font-size: 1.5rem; cursor: pointer; line-height: 1; padding: 0.5rem;
+        }
+        .close-btn:hover { color: #111827; }
+        .modal-body { padding: 1.5rem; overflow-y: auto; }
+        .json-block {
+            background: #f3f4f6; padding: 1rem;
+            border-radius: 0.375rem; border: 1px solid var(--border);
+            font-family: var(--font-code); font-size: 0.85rem;
+            color: #1f2937; white-space: pre-wrap; margin: 0.5rem 0 1.5rem 0;
+        }
+        .section-label {
+            color: var(--text-dim); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; margin-bottom: 0.5rem;
+        }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <header>
-        <h1>CRM API Logs Dashboard</h1>
-        <button class="refresh-btn" onclick="fetchLogs()">⟳ Refresh Logs</button>
+<!-- Sidebar -->
+<aside class="sidebar">
+    <nav class="sidebar-nav">
+        <div class="nav-section-title">Monitoring</div>
+        <div class="nav-item active" id="nav-traces" onclick="switchTab('traces')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+            Execution Traces
+        </div>
+        <div class="nav-item" id="nav-logs" onclick="switchTab('logs')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+            CRM Network
+        </div>
+    </nav>
+</aside>
+
+<!-- Main Content -->
+<main class="main-content">
+    <header class="topbar">
+        <div class="breadcrumb">
+            Dashboard &nbsp;•&nbsp; <span id="current-view-title">Execution Traces</span>
+        </div>
+        <div class="top-controls">
+            <button class="btn-primary" onclick="refreshData()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                Sync Data
+            </button>
+        </div>
     </header>
 
-    <table id="logsTable">
-        <thead>
-            <tr>
-                <th>Method</th>
-                <th>Endpoint</th>
-                <th>Status</th>
-                <th>Latency</th>
-                <th>Timestamp</th>
-            </tr>
-        </thead>
-        <tbody>
-            <!-- Logs will be populated here -->
-        </tbody>
-    </table>
-</div>
+    <div class="content-wrapper">
+        <!-- Traces View -->
+        <div id="view-traces" class="view-section active">
+            <div id="tracesContainer">
+                <div style="text-align: center; color: var(--text-dim); padding: 3rem;">Loading traces...</div>
+            </div>
+        </div>
 
-<!-- Modal -->
+        <!-- CRM Logs View -->
+        <div id="view-logs" class="view-section">
+            <div class="card">
+                <table id="logsTable">
+                    <thead>
+                        <tr>
+                            <th>Method</th>
+                            <th>Endpoint</th>
+                            <th>Status</th>
+                            <th>Latency</th>
+                            <th>Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</main>
+
+<!-- CRM Log Modal -->
 <div class="modal-overlay" id="logModal" onclick="closeModal(event)">
     <div class="modal" onclick="event.stopPropagation()">
         <div class="modal-header">
-            <h2 class="modal-title" id="modalTitle">GET /api/v1/users</h2>
+            <h2 class="modal-title" id="modalTitle">API Request</h2>
             <button class="close-btn" onclick="closeModal()">&times;</button>
         </div>
         <div class="modal-body">
-            <div class="section-title">Request Payload</div>
+            <div class="section-label">Request Payload</div>
             <div class="json-block" id="modalRequest"></div>
             
-            <div class="section-title">Response Body</div>
-            <div class="json-block" id="modalResponse" style="color: #34d399;"></div>
+            <div class="section-label">Response Data</div>
+            <div class="json-block" id="modalResponse"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Function I/O Modal -->
+<div class="modal-overlay" id="ioModal" onclick="closeIoModal(event)">
+    <div class="modal" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <h2 class="modal-title" id="ioModalTitle">Function I/O</h2>
+            <button class="close-btn" onclick="closeIoModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="section-label">Inputs</div>
+            <div class="json-block" id="ioModalIn"></div>
+            
+            <div class="section-label">Outputs</div>
+            <div class="json-block" id="ioModalOut"></div>
         </div>
     </div>
 </div>
 
 <script>
-    let logsData = [];
+    let currentTab = 'traces';
+    let crmLogsData = [];
 
+    function switchTab(tabId) {
+        currentTab = tabId;
+        
+        // Update Nav
+        document.querySelectorAll('.nav-item').forEach(btn => btn.classList.remove('active'));
+        document.getElementById(`nav-${tabId}`).classList.add('active');
+        
+        // Update Views
+        document.querySelectorAll('.view-section').forEach(view => view.classList.remove('active'));
+        document.getElementById(`view-${tabId}`).classList.add('active');
+        
+        // Update Breadcrumb
+        document.getElementById('current-view-title').textContent = tabId === 'traces' ? 'Execution Traces' : 'CRM Network';
+        
+        refreshData();
+    }
+
+    async function refreshData() {
+        if (currentTab === 'traces') {
+            fetchTraces();
+        } else {
+            fetchLogs();
+        }
+    }
+
+    // --- Traces Logic ---
+    async function fetchTraces() {
+        const container = document.getElementById('tracesContainer');
+        try {
+            const response = await fetch('/api/traces');
+            const data = await response.json();
+            renderTraces(data.traces);
+        } catch (error) {
+            container.innerHTML = `<div style="text-align:center; color: var(--error);">Error loading traces: ${error.message}</div>`;
+        }
+    }
+
+    function renderTraces(traces) {
+        const container = document.getElementById('tracesContainer');
+        container.innerHTML = '';
+        
+        if (!traces || traces.length === 0) {
+            container.innerHTML = '<div style="text-align: center; color: var(--text-dim); padding: 3rem;">No traces found. Interact with the bot to generate traces.</div>';
+            return;
+        }
+
+        traces.forEach((trace, idx) => {
+            const card = document.createElement('div');
+            card.className = 'trace-card';
+            
+            const header = document.createElement('div');
+            header.className = 'trace-header';
+            header.innerHTML = `
+                <h3 class="trace-title">[TRACE ID: ${trace.trace_id}] User: ${trace.user_id}</h3>
+                <span class="trace-time">${trace.total_time_ms.toFixed(2)}ms</span>
+            `;
+            
+            const body = document.createElement('div');
+            body.className = 'trace-body';
+            
+            const tree = document.createElement('ul');
+            tree.className = 'trace-tree';
+            
+            trace.roots.forEach(root => {
+                tree.appendChild(createTraceNode(root, `trace_${idx}`));
+            });
+            
+            body.appendChild(tree);
+            card.appendChild(header);
+            card.appendChild(body);
+            container.appendChild(card);
+        });
+    }
+
+    function createTraceNode(node, idPrefix) {
+        const li = document.createElement('li');
+        li.className = 'trace-node';
+        
+        const hasChildren = node.children && node.children.length > 0;
+        const hasIO = node.raw_inputs || node.raw_outputs;
+        
+        const row = document.createElement('div');
+        row.className = 'trace-row';
+        
+        let toggleBtn = '<span style="min-width: 1.5rem; display:inline-block;"></span>';
+        if (hasChildren) {
+            toggleBtn = `<span class="trace-toggle" onclick="toggleTrace(this)">▼</span>`;
+        }
+        
+        let ioBtn = '';
+        if (hasIO) {
+            const safeIn = encodeURIComponent(JSON.stringify(node.raw_inputs || {})).replace(/'/g, "%27");
+            const safeOut = encodeURIComponent(JSON.stringify(node.raw_outputs || {})).replace(/'/g, "%27");
+            ioBtn = `<button class="trace-io-btn" onclick="openIoModal('${safeIn}', '${safeOut}', '${node.name}')">View I/O</button>`;
+        }
+        
+        row.innerHTML = `
+            ${toggleBtn}
+            <div class="trace-content">
+                <span class="trace-name">${node.name}</span>
+                <span class="trace-duration">${node.duration_ms.toFixed(2)}ms</span>
+                ${ioBtn}
+            </div>
+        `;
+        
+        li.appendChild(row);
+        
+        if (hasChildren) {
+            const childrenUl = document.createElement('ul');
+            childrenUl.className = 'trace-children';
+            node.children.forEach(child => {
+                childrenUl.appendChild(createTraceNode(child, idPrefix));
+            });
+            li.appendChild(childrenUl);
+        }
+        
+        return li;
+    }
+
+    function toggleTrace(btn) {
+        const children = btn.parentElement.nextElementSibling;
+        if (children && children.classList.contains('trace-children')) {
+            children.classList.toggle('collapsed');
+            btn.textContent = children.classList.contains('collapsed') ? '▶' : '▼';
+        }
+    }
+
+    function openIoModal(encIn, encOut, name) {
+        document.getElementById('ioModalTitle').textContent = name;
+        
+        const rawIn = JSON.parse(decodeURIComponent(encIn));
+        const rawOut = JSON.parse(decodeURIComponent(encOut));
+        
+        document.getElementById('ioModalIn').textContent = Object.keys(rawIn).length ? JSON.stringify(rawIn, null, 2) : "No inputs";
+        document.getElementById('ioModalOut').textContent = Object.keys(rawOut).length ? JSON.stringify(rawOut, null, 2) : "No outputs";
+        
+        document.getElementById('ioModal').classList.add('active');
+    }
+    
+    function closeIoModal(event) {
+        if (event && event.target !== document.getElementById('ioModal')) return;
+        document.getElementById('ioModal').classList.remove('active');
+    }
+
+    // --- CRM Logs Logic ---
     async function fetchLogs() {
         const tbody = document.querySelector('#logsTable tbody');
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Loading logs...</td></tr>';
-        
         try {
             const response = await fetch('/api/logs');
-            logsData = await response.json();
-            renderLogs(logsData);
+            crmLogsData = await response.json();
+            renderLogs(crmLogsData);
         } catch (error) {
-            tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--error-color);">Failed to load logs: ${error.message}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--error);">Failed to load logs: ${error.message}</td></tr>`;
         }
     }
 
@@ -287,7 +633,7 @@
         tbody.innerHTML = '';
 
         if (logs.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No logs found. Make some CRM calls!</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-dim); padding: 2rem;">No network logs found.</td></tr>';
             return;
         }
 
@@ -298,45 +644,36 @@
             const isSuccess = log.status_code >= 200 && log.status_code < 300;
             const statusClass = isSuccess ? 'status-success' : 'status-error';
             
-            // Format date
             const date = new Date(log.created_at);
             const timeStr = date.toLocaleString('en-GB', { 
-                day: '2-digit', month: '2-digit', year: 'numeric',
                 hour12: true, hour: '2-digit', minute:'2-digit', second:'2-digit' 
             });
             
             tr.innerHTML = `
                 <td><span class="method-badge method-${log.method}">${log.method}</span></td>
-                <td class="endpoint">${log.endpoint}</td>
-                <td><span class="status-badge ${statusClass}">${log.status_code || 'Err'}</span></td>
-                <td class="latency">${log.latency_ms ? log.latency_ms.toFixed(0) + 'ms' : '-'}</td>
-                <td style="color: var(--text-muted); font-size: 0.875rem;">${timeStr}</td>
+                <td class="endpoint-text">${log.endpoint}</td>
+                <td style="font-weight: 600;" class="${statusClass}">${log.status_code || 'Err'}</td>
+                <td style="font-family: var(--font-code); color: var(--text-dim);">${log.latency_ms ? log.latency_ms.toFixed(0) + 'ms' : '-'}</td>
+                <td style="color: var(--text-dim); font-size: 0.85rem;">${timeStr}</td>
             `;
             tbody.appendChild(tr);
         });
     }
 
     function openModal(index) {
-        const log = logsData[index];
+        const log = crmLogsData[index];
         if (!log) return;
 
         document.getElementById('modalTitle').textContent = `${log.method} ${log.endpoint}`;
         
         const reqBlock = document.getElementById('modalRequest');
-        if (log.request_payload) {
-            reqBlock.textContent = JSON.stringify(log.request_payload, null, 2);
-        } else {
-            reqBlock.textContent = "No payload (or not captured)";
-        }
+        reqBlock.textContent = log.request_payload ? JSON.stringify(log.request_payload, null, 2) : "No payload";
 
         const resBlock = document.getElementById('modalResponse');
         if (log.response_body) {
             resBlock.textContent = JSON.stringify(log.response_body, null, 2);
-            // Change color based on status
-            resBlock.style.color = (log.status_code >= 200 && log.status_code < 300) ? '#34d399' : '#f87171';
         } else {
             resBlock.textContent = "No response body";
-            resBlock.style.color = 'var(--text-muted)';
         }
 
         document.getElementById('logModal').classList.add('active');
@@ -347,8 +684,8 @@
         document.getElementById('logModal').classList.remove('active');
     }
 
-    // Load on start
-    fetchLogs();
+    // Initial load
+    refreshData();
 </script>
 </body>
 </html>

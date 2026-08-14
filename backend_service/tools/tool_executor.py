@@ -9,6 +9,9 @@ from application.monitoring.logger import AppLogger
 logger = AppLogger.get_logger("tool_executor")
 CRM_BASE_URL = os.getenv("CRM_BASE_URL", "http://localhost:8090/api/crm")
 
+from application.shared.utils.tracer import trace_all_methods
+
+@trace_all_methods
 class ToolExecutor:
     def __init__(self, crm_client=None):
         self._crm_client = crm_client
@@ -58,9 +61,45 @@ class ToolExecutor:
                     profile_id = data.get("profile_id")
                     username = data.get("username")
                     
-                    if profile_id:
-                        prof_res = self._crm_client.get_profile(profile_id)
-                        if prof_res.get("success") and "data" in prof_res:
+                    # PARALLEL CRM FETCHING (Sync over threads)
+                    import concurrent.futures
+                    
+                    def fetch_profile():
+                        return self._crm_client.get_profile(profile_id) if profile_id else {}
+                    def fetch_search():
+                        return self._crm_client.search_users(username) if username else {}
+                    def fetch_rate():
+                        return self._crm_client.get_user_current_rate(customer_id)
+                    def fetch_invoices():
+                        return self._crm_client.get_user_invoices(customer_id)
+                    def fetch_packages():
+                        return self._crm_client.get_available_packages(customer_id)
+                    def fetch_iptv():
+                        iptv_type = data.get("iptv_type")
+                        if iptv_type and iptv_type != "none":
+                            return self._crm_client.get_iptv_expiration(customer_id)
+                        return {}
+                        
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
+                        f_profile = executor.submit(fetch_profile)
+                        f_search = executor.submit(fetch_search)
+                        f_rate = executor.submit(fetch_rate)
+                        f_iptv = executor.submit(fetch_iptv)
+                        
+                        f_invoices = None
+                        f_packages = None
+                        if tool_name == "get_available_packages" and user_profile_type != 4:
+                            f_invoices = executor.submit(fetch_invoices)
+                            f_packages = executor.submit(fetch_packages)
+                        
+                        prof_res = f_profile.result()
+                        search_res = f_search.result()
+                        rate_res = f_rate.result()
+                        iptv_res = f_iptv.result()
+                        inv_res = f_invoices.result() if f_invoices else None
+                        res_pkg = f_packages.result() if f_packages else None
+                    
+                    if prof_res and prof_res.get("success") and "data" in prof_res:
                             prof_data = prof_res.get("data", {}).get("data", {})
                             
                             # Add raw profile fields for context
@@ -113,9 +152,7 @@ class ToolExecutor:
                                             n_downrate = fmt_speed(n_data.get("downrate", 0))
                                             notes.append(f"حقيقة هامة: عند انتهاء باقة العميل الحالية (إذا استهلك كامل الحجم)، ستنخفض سرعته تلقائياً لتصبح {n_downrate} تحميل و {n_uprate} رفع.")
                                 
-                    if username:
-                        search_res = self._crm_client.search_users(username)
-                        if search_res.get("success") and "data" in search_res:
+                    if search_res and search_res.get("success") and "data" in search_res:
                             s_data = search_res.get("data", {})
                             if isinstance(s_data, dict) and s_data.get("data"):
                                 s_data = s_data["data"]
@@ -145,9 +182,8 @@ class ToolExecutor:
                                 else:
                                     notes.append("حقيقة: الراوتر الخاص بالعميل غير متصل بالإنترنت حالياً (Offline).")
                                     
-                    # Router Live Rate (1 sample to avoid latency)
-                    rate_res = self._crm_client.get_user_current_rate(customer_id)
-                    if rate_res.get("success") and "data" in rate_res:
+                    # Router Live Rate (From Parallel Fetch)
+                    if rate_res and rate_res.get("success") and "data" in rate_res:
                         r_data = rate_res.get("data", {})
                         if isinstance(r_data, dict):
                             actual_rate_data = r_data.get("data", r_data)
@@ -206,7 +242,6 @@ class ToolExecutor:
                     # Try to fetch IPTV expiration if they are subscribed
                     if iptv_type and iptv_type != "none":
                         try:
-                            iptv_res = self._crm_client.get_iptv_expiration(customer_id)
                             if iptv_res.get("success") and "data" in iptv_res:
                                 iptv_data = iptv_res["data"]
                                 if isinstance(iptv_data, dict) and "data" in iptv_data:
@@ -217,7 +252,7 @@ class ToolExecutor:
                                         else:
                                             notes.append(f"حقيقة: تاريخ انتهاء اشتراك خدمة التلفزيون (IPTV) هو: {exp_date}")
                         except Exception as e:
-                            logger.error(f"Failed to fetch IPTV expiration: {e}")
+                            logger.error(f"Failed to process IPTV expiration: {e}")
 
                     if notes:
                         data["ai_business_logic_notes"] = notes
@@ -246,7 +281,6 @@ class ToolExecutor:
                                     pass
 
                             used_loan_amount = 0.0
-                            inv_res = self._crm_client.get_user_invoices(customer_id)
                             logger.info(f"Fetched invoices for {customer_id}: {inv_res}")
                             if inv_res.get("success") and "data" in inv_res:
                                 inv_data_payload = inv_res["data"]
@@ -267,8 +301,7 @@ class ToolExecutor:
                                                 pass
                                             used_loan_amount += amt
 
-                            res_pkg = self._crm_client.get_available_packages(customer_id)
-                            if res_pkg.get("success") and "data" in res_pkg:
+                            if res_pkg and res_pkg.get("success") and "data" in res_pkg:
                                 api_json = res_pkg["data"]
                                 if isinstance(api_json, dict) and "data" in api_json:
                                     packages = api_json["data"]
@@ -331,29 +364,44 @@ class ToolExecutor:
                 overview = self._crm_client.get_user_overview(customer_id)
                 data = overview.get("data", {}) if overview.get("success") else {}
                 
-                # 2. Fetch rate
-                try:
-                    rate = self._crm_client.get_user_current_rate(customer_id)
-                    if rate.get("success"):
-                        data["current_rate"] = rate.get("data")
-                except Exception as e:
-                    logger.warning(f"Failed to fetch rate: {e}")
-                    
-                # 3. Fetch sessions
-                try:
-                    sessions = self._crm_client.get_user_sessions(customer_id, limit=5)
-                    if sessions.get("success"):
-                        data["recent_sessions"] = sessions.get("data", {}).get("data", [])
-                except Exception as e:
-                    logger.warning(f"Failed to fetch sessions: {e}")
-                    
-                # 4. Include profile details for speed comparison
+                # 2. Fetch rate, sessions, profile in parallel
                 profile_id = data.get("profile_id")
-                if profile_id:
-                    prof_res = self._crm_client.get_profile(profile_id)
-                    if prof_res.get("success") and "data" in prof_res:
-                        prof_data = prof_res.get("data", {}).get("data", {})
-                        data["profile_details"] = prof_data
+                
+                import concurrent.futures
+                
+                def fetch_rate():
+                    return self._crm_client.get_user_current_rate(customer_id)
+                def fetch_sessions():
+                    return self._crm_client.get_user_sessions(customer_id, limit=5)
+                def fetch_profile():
+                    return self._crm_client.get_profile(profile_id) if profile_id else {}
+                
+                with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+                    f_rate = executor.submit(fetch_rate)
+                    f_sessions = executor.submit(fetch_sessions)
+                    f_profile = executor.submit(fetch_profile)
+                    
+                    try:
+                        rate = f_rate.result()
+                        if rate.get("success"):
+                            data["current_rate"] = rate.get("data")
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch rate: {e}")
+                        
+                    try:
+                        sessions = f_sessions.result()
+                        if sessions.get("success"):
+                            data["recent_sessions"] = sessions.get("data", {}).get("data", [])
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch sessions: {e}")
+                        
+                    try:
+                        prof_res = f_profile.result()
+                        if prof_res.get("success") and "data" in prof_res:
+                            prof_data = prof_res.get("data", {}).get("data", {})
+                            data["profile_details"] = prof_data
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch profile: {e}")
 
                 # 5. Provide Action Button for Disconnect and Connection Type
                 conn_type_note = "ADSL" if "ADSL" in str(data.get("profile_name", "")).upper() else "Wi-Fi/Microwave"
@@ -364,12 +412,6 @@ class ToolExecutor:
                 ]
                 
                 return {"success": True, "data": data}
-                
-            elif tool_name == "open_ticket":
-                if not self._crm_client:
-                    return {"success": False, "error": "CRMClient not configured"}
-                url = f"{self._crm_client._auth_manager._base_url}/tickets"
-                return self._crm_client.post(url, parameters)
                 
             elif tool_name == "check_extend_status":
                 if not customer_id:

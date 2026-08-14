@@ -4,6 +4,9 @@ from application.shared.dto.agent_decision import AgentDecision
 from application.monitoring.logger import AppLogger
 
 
+from application.shared.utils.tracer import trace_all_methods
+
+@trace_all_methods
 class WorkflowCoordinator:
     """Coordinates execution of services based on AgentDecision."""
 

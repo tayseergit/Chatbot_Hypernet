@@ -15,6 +15,9 @@ from application.aspects.metrics_aspect import track_metrics
 from application.aspects.exception_aspect import handle_exceptions
 
 
+from application.shared.utils.tracer import trace_all_methods
+
+@trace_all_methods
 class AgentService:
   
 

@@ -7,6 +7,9 @@ from application.monitoring.logger import AppLogger
 from application.shared.configuration.app_config import LLMConfig
 
 
+from application.shared.utils.tracer import trace_all_methods
+
+@trace_all_methods
 class InferenceEngine:
     """Manages LLM inference with model selection and parameter tuning."""
 

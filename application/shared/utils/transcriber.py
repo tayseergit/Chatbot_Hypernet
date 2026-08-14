@@ -15,16 +15,22 @@ logger = logging.getLogger("audio_transcriber")
 class AudioTranscriber:
     """
     Service for converting voice messages into text using local Whisper.
+    Uses a Singleton pattern for the model to prevent massive RAM usage on concurrent requests.
     """
+    _model_instance = None
+
     def __init__(self):
         # We load the model from the local file if it exists, otherwise it will try to download
         model_path = os.path.join(os.getcwd(), "models", "small.pt")
         try:
-            if os.path.exists(model_path):
-                self.model = whisper.load_model(model_path)
-            else:
-                logger.warning("Local model not found at models/small.pt. It will try to download automatically without resume support.")
-                self.model = whisper.load_model("small")
+            if AudioTranscriber._model_instance is None:
+                if os.path.exists(model_path):
+                    AudioTranscriber._model_instance = whisper.load_model(model_path)
+                else:
+                    logger.warning("Local model not found at models/small.pt. It will try to download automatically without resume support.")
+                    AudioTranscriber._model_instance = whisper.load_model("small")
+            
+            self.model = AudioTranscriber._model_instance
         except Exception as e:
             logger.error(f"Failed to load Whisper model: {e}")
             self.model = None

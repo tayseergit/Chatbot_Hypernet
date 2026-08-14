@@ -7,6 +7,10 @@ from backend_service.core.models.crm_log import CRMLog
 
 class CRMLogService:
     def log_request(self, endpoint: str, method: str, payload: dict, response: dict, status_code: int, latency_ms: float):
+        import os
+        if os.getenv("ENABLE_CRM_LOGS", "true").lower() == "false":
+            return
+            
         db = SessionLocal()
         try:
             log_entry = CRMLog(

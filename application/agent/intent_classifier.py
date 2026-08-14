@@ -14,6 +14,9 @@ from application.shared.configuration.app_config import AppConfig
 
 
 from application.agent.intents import ALLOWED_INTENTS, INTENT_KEYWORDS, INTENT_SERVICE_MAP
+from application.shared.utils.tracer import trace_all_methods
+
+@trace_all_methods
 class IntentClassifier:
     """Classifies user messages into ISP-specific intents and service requirements."""
 

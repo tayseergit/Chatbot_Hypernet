@@ -25,6 +25,7 @@ class TelegramBot:
         self._facade = facade
         self._logger = AppLogger.get_logger("telegram_bot")
         self._app = None
+        self._whisper_semaphore = asyncio.Semaphore(2)
 
     def start(self) -> None:
         """Start the Telegram bot with polling."""
@@ -236,129 +237,148 @@ class TelegramBot:
             
         user_id = str(update.effective_user.id)
         
-        image_bytes = None
-        image_path = None
-        if message.contact:
-            message_text = message.contact.phone_number
-        elif message.photo:
-            message_text = message.caption or "صورة لقيم الراوتر"
-            try:
-                photo_file = await message.photo[-1].get_file()
-                byte_array = await photo_file.download_as_bytearray()
-                image_bytes = bytes(byte_array)
-                
-                # Save image to disk for logging
-                import os, time
-                media_dir = os.path.join(os.getcwd(), "media")
-                os.makedirs(media_dir, exist_ok=True)
-                file_path = os.path.join(media_dir, f"{user_id}_{int(time.time())}.jpg")
-                with open(file_path, "wb") as f:
-                    f.write(image_bytes)
-                image_path = file_path
-                self._logger.info(f"Saved image from {user_id} to {file_path}")
-                
-            except Exception as e:
-                self._logger.error(f"Failed to download photo: {e}")
-        elif message.voice or message.audio:
-            media = message.voice or message.audio
-            
-            # File size limit check (5 MB)
-            if media.file_size > 5 * 1024 * 1024:
-                await message.reply_text("❌ عذراً، حجم المقطع الصوتي كبير جداً (يجب أن لا يتجاوز 5 ميغابايت).")
-                return
-
-            await message.chat.send_action("record_voice")
-            message_text = None
-            try:
-                media_file = await media.get_file()
-                byte_array = await media_file.download_as_bytearray()
-                
-                import os, time
-                media_dir = os.path.join(os.getcwd(), "media")
-                os.makedirs(media_dir, exist_ok=True)
-                
-                ext = ".ogg" if message.voice else ".mp3"
-                file_path = os.path.join(media_dir, f"voice_{user_id}_{int(time.time())}{ext}")
-                with open(file_path, "wb") as f:
-                    f.write(byte_array)
-                
-                self._logger.info(f"Saved voice message to {file_path}. Transcribing...")
-                
-                from application.shared.utils.transcriber import AudioTranscriber
-                transcriber = AudioTranscriber()
-                message_text = await asyncio.to_thread(transcriber.transcribe, file_path)
-                image_path = file_path  # Set this so it gets stored in DB
-                
-                self._logger.info(f"Transcription result: {message_text}")
-                
-                if not message_text:
-                    await message.reply_text("❌ عذراً، لم أتمكن من فهم المقطع الصوتي.")
-                    return
-                    
-            except Exception as e:
-                self._logger.error(f"Failed to process voice message: {e}")
-                await message.reply_text("❌ حدث خطأ أثناء معالجة المقطع الصوتي.")
-                return
-        else:
-            message_text = message.text
-
-        if not message_text and not image_bytes:
-            return
-
-        self._logger.info(f"Telegram message from {user_id}: {message_text[:100]}")
-
+        import os
+        from application.shared.utils.tracer import RequestTracer, trace_context
+        
+        enable_tracing = os.getenv("ENABLE_TRACING", "true").lower() == "true"
+        tracer = None
+        token = None
+        
+        if enable_tracing:
+            tracer = RequestTracer(request_id=f"msg-{update.update_id}", user_id=user_id)
+            token = trace_context.set(tracer)
+        
         try:
-            # Send typing indicator
-            await message.chat.send_action("typing")
-
-            # Process through facade
-            response = await asyncio.to_thread(
-                self._facade.handle_message, user_id, message_text, image_bytes, image_path
-            )
-
-            # Check if we need to request phone number
-            if response.intent == "request_phone_auth":
-                from telegram import ReplyKeyboardMarkup, KeyboardButton
-                contact_btn = KeyboardButton("📱 مشاركة رقم الهاتف", request_contact=True)
-                reply_markup = ReplyKeyboardMarkup([[contact_btn]], one_time_keyboard=True, resize_keyboard=True)
-                await message.reply_text(response.text, reply_markup=reply_markup)
-            else:
-                from telegram import ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
-                
-                # Check for actions/buttons
-                reply_markup = None
-                if getattr(response, "actions", []):
-                    keyboard = []
-                    for action in response.actions:
-                        if action.get("type") == "button":
-                            btn_text = action.get("text", "تأكيد")
-                            btn_data = action.get("callback_data", "unknown")
-                            keyboard.append([InlineKeyboardButton(btn_text, callback_data=btn_data)])
-                        elif action.get("type") == "document":
-                            doc_path = action.get("path")
-                            import os
-                            if os.path.exists(doc_path):
-                                try:
-                                    with open(doc_path, 'rb') as f:
-                                        await message.reply_document(document=f)
-                                except Exception as e:
-                                    self._logger.error(f"Failed to send document {doc_path}: {e}")
-                            else:
-                                self._logger.warning(f"Document not found at {doc_path}")
-
-                    if keyboard:
-                        reply_markup = InlineKeyboardMarkup(keyboard)
-                
-                if reply_markup is None:
-                    reply_markup = ReplyKeyboardRemove()
+            image_bytes = None
+            image_path = None
+            if message.contact:
+                message_text = message.contact.phone_number
+            elif message.photo:
+                message_text = message.caption or "صورة لقيم الراوتر"
+                try:
+                    photo_file = await message.photo[-1].get_file()
+                    byte_array = await photo_file.download_as_bytearray()
+                    image_bytes = bytes(byte_array)
                     
-                await message.reply_text(response.text, reply_markup=reply_markup)
+                    # Save image to disk for logging
+                    import os, time
+                    media_dir = os.path.join(os.getcwd(), "media")
+                    os.makedirs(media_dir, exist_ok=True)
+                    file_path = os.path.join(media_dir, f"{user_id}_{int(time.time())}.jpg")
+                    with open(file_path, "wb") as f:
+                        f.write(image_bytes)
+                    image_path = file_path
+                    self._logger.info(f"Saved image from {user_id} to {file_path}")
+                    
+                except Exception as e:
+                    self._logger.error(f"Failed to download photo: {e}")
+            elif message.voice or message.audio:
+                media = message.voice or message.audio
+                
+                # File size limit check (5 MB)
+                if media.file_size > 5 * 1024 * 1024:
+                    await message.reply_text("❌ عذراً، حجم المقطع الصوتي كبير جداً (يجب أن لا يتجاوز 5 ميغابايت).")
+                    return
 
-            self._logger.info(
-                f"Replied to {user_id} | intent={response.intent} "
-                f"sources={response.sources_used}"
-            )
+                await message.chat.send_action("record_voice")
+                message_text = None
+                try:
+                    media_file = await media.get_file()
+                    byte_array = await media_file.download_as_bytearray()
+                    
+                    import os, time
+                    media_dir = os.path.join(os.getcwd(), "media")
+                    os.makedirs(media_dir, exist_ok=True)
+                    
+                    ext = ".ogg" if message.voice else ".mp3"
+                    file_path = os.path.join(media_dir, f"voice_{user_id}_{int(time.time())}{ext}")
+                    with open(file_path, "wb") as f:
+                        f.write(byte_array)
+                    
+                    self._logger.info(f"Saved voice message to {file_path}. Transcribing...")
+                    
+                    from application.shared.utils.transcriber import AudioTranscriber
+                    transcriber = AudioTranscriber()
+                    
+                    async with self._whisper_semaphore:
+                        message_text = await asyncio.to_thread(transcriber.transcribe, file_path)
+                        
+                    image_path = file_path  # Set this so it gets stored in DB
+                    
+                    self._logger.info(f"Transcription result: {message_text}")
+                    
+                    if not message_text:
+                        await message.reply_text("❌ عذراً، لم أتمكن من فهم المقطع الصوتي.")
+                        return
+                        
+                except Exception as e:
+                    self._logger.error(f"Failed to process voice message: {e}")
+                    await message.reply_text("❌ حدث خطأ أثناء معالجة المقطع الصوتي.")
+                    return
+            else:
+                message_text = message.text
 
-        except Exception as e:
-            self._logger.error(f"Error handling Telegram message: {e}")
-            await message.reply_text(SUPPORT_FALLBACK_MESSAGE)
+            if not message_text and not image_bytes:
+                return
+
+            self._logger.info(f"Telegram message from {user_id}: {message_text[:100]}")
+
+            try:
+                # Send typing indicator
+                await message.chat.send_action("typing")
+
+                # Process through facade
+                response = await asyncio.to_thread(
+                    self._facade.handle_message, user_id, message_text, image_bytes, image_path
+                )
+
+                # Check if we need to request phone number
+                if response.intent == "request_phone_auth":
+                    from telegram import ReplyKeyboardMarkup, KeyboardButton
+                    contact_btn = KeyboardButton("📱 مشاركة رقم الهاتف", request_contact=True)
+                    reply_markup = ReplyKeyboardMarkup([[contact_btn]], one_time_keyboard=True, resize_keyboard=True)
+                    await message.reply_text(response.text, reply_markup=reply_markup)
+                else:
+                    from telegram import ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
+                    
+                    # Check for actions/buttons
+                    reply_markup = None
+                    if getattr(response, "actions", []):
+                        keyboard = []
+                        for action in response.actions:
+                            if action.get("type") == "button":
+                                btn_text = action.get("text", "تأكيد")
+                                btn_data = action.get("callback_data", "unknown")
+                                keyboard.append([InlineKeyboardButton(btn_text, callback_data=btn_data)])
+                            elif action.get("type") == "document":
+                                doc_path = action.get("path")
+                                import os
+                                if os.path.exists(doc_path):
+                                    try:
+                                        with open(doc_path, 'rb') as f:
+                                            await message.reply_document(document=f)
+                                    except Exception as e:
+                                        self._logger.error(f"Failed to send document {doc_path}: {e}")
+                                else:
+                                    self._logger.warning(f"Document not found at {doc_path}")
+
+                        if keyboard:
+                            reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                    if reply_markup is None:
+                        reply_markup = ReplyKeyboardRemove()
+                        
+                    await message.reply_text(response.text, reply_markup=reply_markup)
+
+                self._logger.info(
+                    f"Replied to {user_id} | intent={response.intent} "
+                    f"sources={response.sources_used}"
+                )
+
+            except Exception as e:
+                self._logger.error(f"Error handling Telegram message: {e}")
+                await message.reply_text(SUPPORT_FALLBACK_MESSAGE)
+        finally:
+            if tracer and token is not None:
+                tracer.dump_trace()
+                trace_context.reset(token)

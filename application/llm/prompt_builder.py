@@ -3,6 +3,9 @@
 from typing import Any, Dict, Optional
 
 
+from application.shared.utils.tracer import trace_all_methods
+
+@trace_all_methods
 class PromptBuilder:
     """Builds structured prompts for different LLM use cases."""
 
