@@ -20,20 +20,8 @@ build/
 
 # Media & Uploads
 media/
-
-# Databases (SQLite)
+node_modules/
 *.sqlite
-*.sqlite3
 *.db
-
-# ML Models (large binary files)
 models/
-
-# Logs
-*.log
-bot_output.log
-
-# OS
-.DS_Store
-Thumbs.db
 logs/

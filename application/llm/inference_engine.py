@@ -8,6 +8,9 @@ from application.monitoring.logger import AppLogger
 from application.shared.configuration.app_config import LLMConfig
 
 
+from application.shared.utils.tracer import trace_all_methods
+
+@trace_all_methods
 class InferenceEngine:
     """Manages LLM inference with model selection and parameter tuning."""
 
@@ -31,6 +34,17 @@ class InferenceEngine:
         result = self._provider.generate(prompt, options)
         self._logger.debug(f"Inference complete ({len(result)} chars output)")
         return result
+
+    def infer_stream(self, prompt: str, options: Dict[str, Any] = None):
+        """Run streaming inference on a prompt and yield raw LLM output chunks."""
+        self._logger.debug(f"Running stream inference ({len(prompt)} chars prompt)")
+        if hasattr(self._provider, 'generate_stream'):
+            for chunk in self._provider.generate_stream(prompt, options):
+                yield chunk
+        else:
+            # Fallback for providers that don't support streaming yet
+            result = self._provider.generate(prompt, options)
+            yield result
 
     def health_check(self) -> bool:
         """Check if the LLM backend is available."""

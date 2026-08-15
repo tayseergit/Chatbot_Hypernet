@@ -6,7 +6,8 @@ Key design: Agent decides WHAT, Facade decides HOW.
 """
 
 import time
-from typing import Optional
+import asyncio
+from typing import Dict, Any, Optional, List, Callable
 
 from application.shared.configuration.app_config import AppConfig, SUPPORT_FALLBACK_MESSAGE
 from application.shared.dto.chat_message import ChatMessage
@@ -26,6 +27,7 @@ from application.monitoring.logger import AppLogger
 from application.aspects.logging_aspect import log_operation
 from application.aspects.metrics_aspect import track_metrics
 from application.aspects.tracing_aspect import trace_operation, get_trace_manager
+from application.shared.utils.tracer import trace_step
 from application.middlewares.middleware_pipeline import MiddlewarePipeline
 from application.middlewares.auth_middleware import AuthMiddleware
 from application.permissions.permission_gate import PermissionGate
@@ -83,6 +85,10 @@ class ChatbotFacade:
 
         # Initialize Middleware Pipeline
         self._pipeline = MiddlewarePipeline()
+        
+        from application.middlewares.rate_limit_middleware import RateLimitMiddleware
+        self._pipeline.register(RateLimitMiddleware(self._backend))
+        
         self._pipeline.register(AuthMiddleware(self._backend))
 
         self._initialized = False
@@ -105,17 +111,27 @@ class ChatbotFacade:
 
         # Check LLM health
         if self._llm_service.health_check():
-            self._logger.info("✓ LLM (Ollama) is available")
+            self._logger.info("[OK] LLM is available")
         else:
-            self._logger.warning("✗ LLM (Ollama) is not available")
+            self._logger.warning("[FAIL] LLM is not available")
 
         self._initialized = True
         self._logger.info("Chatbot platform initialized successfully")
 
     @log_operation()
     @track_metrics("handle_message")
-    @trace_operation("handle_message")
-    def handle_message(self, user_id: str, message_text: str, user_name: Optional[str] = None, image_bytes: Optional[bytes] = None, image_path: Optional[str] = None) -> ChatResponse:
+    @trace_operation("facade.handle_message")
+    @trace_step
+    def handle_message(
+        self, 
+        user_id: str, 
+        message_text: str, 
+        user_name: Optional[str] = None,
+        image_bytes: Optional[bytes] = None, 
+        image_path: Optional[str] = None, 
+        stream_callback: Callable = None
+    ):
+    
         """
         Main entry point for an incoming chat message. — the MAIN entry point.
 
@@ -135,7 +151,8 @@ class ChatbotFacade:
             msg_to_save = message_text
             if image_path:
                 import os
-                msg_to_save = f"{message_text} [Attached Image: {os.path.basename(image_path)}]"
+                media_type = "Voice" if image_path.lower().endswith((".ogg", ".mp3", ".wav", ".m4a")) else "Image"
+                msg_to_save = f"{message_text} [Attached {media_type}: {os.path.basename(image_path)}]"
             self._backend.message_service.save_messages(session.session_id, "user", msg_to_save)
             t_session = (time.time() - t0) * 1000
             self._logger.info(
@@ -151,10 +168,15 @@ class ChatbotFacade:
             t1 = time.time()
             history_objs = self._backend.message_service.load_history(session.session_id, limit=40, days=7)
             history_text = "\n".join([f"{m.sender}: {m.content}" for m in history_objs])
+            
+            # Use a smaller history context for intent classification to improve performance
+            agent_history_objs = history_objs[-10:] if len(history_objs) > 10 else history_objs
+            agent_history_text = "\n".join([f"{m.sender}: {m.content}" for m in agent_history_objs])
+            
             context = {
                 "session_id": session.session_id,
                 "customer_id": session.customer_id or "unknown",
-                "history": history_text,
+                "history": agent_history_text,
             }
             decision = self._agent.analyze(message_text, context)
 
@@ -191,13 +213,14 @@ class ChatbotFacade:
                 decision.parameters["crm_customer_id"] = session.customer_id
                 
             workflow_results = self._coordinator.execute_workflow(
-                decision,
-                message_text,
-                history=history_text,
-                image_bytes=image_bytes,
-                session_id=session.session_id,
-                customer_id=session.customer_id,
-            )
+            decision,
+            message_text,
+            history=history_text,
+            image_bytes=image_bytes,
+            session_id=session.session_id,
+            customer_id=session.customer_id,
+            stream_callback=stream_callback
+
 
             t_workflow = (time.time() - t2) * 1000
             self._logger.info(f"Step 3 - Workflow Execution Time: {t_workflow:.2f}ms")
@@ -279,11 +302,31 @@ class ChatbotFacade:
 
     def logout_user(self, user_id: str) -> str:
         """Logs out the user and starts a fresh session."""
+        session = self._backend.session_service.get_or_create_session(user_id)
+        if not session.authed and session.auth_state != "AUTHENTICATED":
+            return "عذراً، أنت لست مسجلاً للدخول حالياً. ❌"
+            
         self._backend.session_service.close_session(user_id)
         self._logger.info(f"User {user_id} logged out. Session closed.")
         return "تم تسجيل الخروج بنجاح. تم مسح بيانات الجلسة الحالية."
 
+    @trace_step
+    def reset_history(self, user_id: str) -> str:
+        """Reset chat history for the user without logging them out."""
+        session = self._backend.session_service.get_or_create_session(user_id)
+        if not session.authed and session.auth_state != "AUTHENTICATED":
+            return "عذراً، يجب تسجيل الدخول أولاً لاستخدام هذه الميزة. ❌"
+            
+        new_session = self._backend.session_service.rotate_session(user_id)
+        
+        # Clear auth_attempts just in case, though it's a new session
+        self._backend.context_service.delete_context(new_session.session_id, "auth_attempts")
+        
+        self._logger.info(f"User {user_id} rotated session to {new_session.session_id} to reset context.")
+        return "تم مسح سياق المحادثة السابقة بنجاح!\n\n(بإمكاني الآن الإجابة على مواضيع جديدة تماماً دون ربطها بما سبق)."
+
     @log_operation()
+    @trace_step
     def execute_action(self, user_id: str, action_data: str) -> str:
         """Handle inline button actions."""
         try:
@@ -334,87 +377,95 @@ class ChatbotFacade:
                 except ValueError:
                     return "❌ معرف الباقة غير صالح."
 
-                # 1. Fetch package details
-                pkg_res = self._backend.crm_client.get_available_packages(session.customer_id)
-                if not pkg_res.get("success") or "data" not in pkg_res:
-                    return "❌ حدث خطأ أثناء جلب تفاصيل الباقة."
-                
-                target_pkg = None
-                api_json = pkg_res["data"]
-                if isinstance(api_json, dict) and "data" in api_json:
-                    packages = api_json["data"]
-                    if isinstance(packages, list):
-                        for p in packages:
-                            if str(p.get("id")) == str(pkg_id):
-                                target_pkg = p
-                                break
-                
-                if not target_pkg:
-                    return "❌ الباقة المطلوبة غير متوفرة أو غير صالحة لحسابك."
-
-                quota_mb_str = target_pkg.get("quota_mb", "0")
-                try:
-                    quota_gb = float(quota_mb_str) / 1024
-                except ValueError:
-                    quota_gb = 0
+                from application.shared.utils.lock_manager import user_lock_manager
+                with user_lock_manager.get_lock(session.customer_id):
+                    # 0. Check if user is unlimited
+                    overview = self._backend.crm_client.get_user_overview(session.customer_id)
+                    if overview.get("success") and "data" in overview:
+                        if overview["data"].get("profile_type") == 4 or str(overview["data"].get("profile_type")) == "4":
+                            return "❌ عذراً، لا يمكنك تفعيل باقات إضافية لأن اشتراكك الحالي غير محدود (Unlimited)."
+    
+                    # 1. Fetch package details
+                    pkg_res = self._backend.crm_client.get_available_packages(session.customer_id)
+                    if not pkg_res.get("success") or "data" not in pkg_res:
+                        return "❌ حدث خطأ أثناء جلب تفاصيل الباقة."
                     
-                pkg_price = 0.0
-                try:
-                    pkg_price = float(target_pkg.get("price", 0))
-                except ValueError:
-                    pass
-
-                # 2. Fetch balance
-                overview = self._backend.crm_client.get_user_overview(session.customer_id)
-                user_balance = 0.0
-                if overview.get("success") and "data" in overview:
-                    b_val = overview["data"].get("balance")
-                    if b_val is not None:
-                        try:
-                            user_balance = float(b_val)
-                        except (ValueError, TypeError):
-                            pass
-                
-                # 3. Check loan eligibility if balance is insufficient
-                can_activate = False
-                if user_balance >= pkg_price:
-                    can_activate = True
-                else:
-                    used_loan_amount = 0.0
-                    inv_res = self._backend.crm_client.get_user_invoices(session.customer_id)
-                    if inv_res.get("success") and "data" in inv_res:
-                        inv_data = inv_res["data"].get("data", [])
-                        for inv in inv_data:
-                            if isinstance(inv, dict):
-                                paid_val = inv.get("paid")
-                                is_unpaid = (paid_val == 0 or paid_val == "0" or paid_val is False)
-                                if inv.get("type") == "pkg_activation" and is_unpaid:
-                                    amt = 0.0
-                                    try:
-                                        amt = float(inv.get("amount", inv.get("total", 0)))
-                                    except:
-                                        pass
-                                    used_loan_amount += amt
-                    if (used_loan_amount + pkg_price) <= 50:
-                        can_activate = True
-
-                if not can_activate:
-                    return "❌ عذراً، رصيدك غير كافٍ أو أنك استنفدت حد السلفة المسموح به (50 كحد أقصى)."
-
-                # 4. Perform Activation
-                res = self._backend.crm_client.activate_package(session.customer_id, pkg_id)
-                if res.get("success"):
-                    data = res.get("data", {})
-                    if data.get("status") is False:
-                        return f"❌ عذراً، لم تنجح العملية: {data.get('message', 'رصيد غير كافٍ')}"
+                    target_pkg = None
+                    api_json = pkg_res["data"]
+                    if isinstance(api_json, dict) and "data" in api_json:
+                        packages = api_json["data"]
+                        if isinstance(packages, list):
+                            for p in packages:
+                                if str(p.get("id")) == str(pkg_id):
+                                    target_pkg = p
+                                    break
+                    
+                    if not target_pkg:
+                        return "❌ الباقة المطلوبة غير متوفرة أو غير صالحة لحسابك."
+    
+                    quota_mb_str = target_pkg.get("quota_mb", "0")
+                    try:
+                        quota_gb = float(quota_mb_str) / 1024
+                    except ValueError:
+                        quota_gb = 0
                         
-                    msg = str(data.get("message", ""))
-                    if data.get("status") is True or "successfully" in msg.lower() or "success" in msg.lower() or "تم" in msg:
-                        return "✅ تم تفعيل الباقة بنجاح!"
+                    pkg_price = 0.0
+                    try:
+                        pkg_price = float(target_pkg.get("price", 0))
+                    except ValueError:
+                        pass
+    
+                    # 2. Fetch balance
+                    overview = self._backend.crm_client.get_user_overview(session.customer_id)
+                    user_balance = 0.0
+                    if overview.get("success") and "data" in overview:
+                        b_val = overview["data"].get("balance")
+                        if b_val is not None:
+                            try:
+                                user_balance = float(b_val)
+                            except (ValueError, TypeError):
+                                pass
+                    
+                    # 3. Check loan eligibility if balance is insufficient
+                    can_activate = False
+                    if user_balance >= pkg_price:
+                        can_activate = True
                     else:
-                        return f"نتيجة العملية: {msg}"
-                else:
-                    return "❌ عذراً، حدث خطأ أثناء تواصلنا مع المخدم لتفعيل الباقة."
+                        used_loan_amount = 0.0
+                        inv_res = self._backend.crm_client.get_user_invoices(session.customer_id)
+                        if inv_res.get("success") and "data" in inv_res:
+                            inv_data = inv_res["data"].get("data", [])
+                            for inv in inv_data:
+                                if isinstance(inv, dict):
+                                    paid_val = inv.get("paid")
+                                    is_unpaid = (paid_val == 0 or paid_val == "0" or paid_val is False)
+                                    if inv.get("type") == "pkg_activation" and is_unpaid:
+                                        amt = 0.0
+                                        try:
+                                            amt = float(inv.get("amount", inv.get("total", 0)))
+                                        except:
+                                            pass
+                                        used_loan_amount += amt
+                        if (used_loan_amount + pkg_price) <= 50:
+                            can_activate = True
+    
+                    if not can_activate:
+                        return "❌ عذراً، رصيدك غير كافٍ أو أنك استنفدت حد السلفة المسموح به (50 كحد أقصى)."
+    
+                    # 4. Perform Activation
+                    res = self._backend.crm_client.activate_package(session.customer_id, pkg_id)
+                    if res.get("success"):
+                        data = res.get("data", {})
+                        if data.get("status") is False:
+                            return f"❌ عذراً، لم تنجح العملية: {data.get('message', 'رصيد غير كافٍ')}"
+                            
+                        msg = str(data.get("message", ""))
+                        if data.get("status") is True or "successfully" in msg.lower() or "success" in msg.lower() or "تم" in msg:
+                            return "✅ تم تفعيل الباقة بنجاح!"
+                        else:
+                            return f"نتيجة العملية: {msg}"
+                    else:
+                        return "❌ عذراً، حدث خطأ أثناء تواصلنا مع المخدم لتفعيل الباقة."
                     
             return "إجراء غير معروف."
         except Exception as e:

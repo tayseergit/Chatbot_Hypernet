@@ -81,6 +81,7 @@ class SessionService:
                     session_id=session_id, 
                     user_id=user_id, 
                     user_name=old_session.user_name,
+
                     is_active=True, 
                     authed=old_session.authed,
                     auth_state=old_session.auth_state,
@@ -94,10 +95,10 @@ class SessionService:
                 return self.get_or_create_session(user_id)
         finally:
             db.close()
-
     def get_all_sessions(self, limit: int = 50):
         db = SessionLocal()
         try:
             return db.query(SessionModel).order_by(SessionModel.created_at.desc()).limit(limit).all()
         finally:
             db.close()
+

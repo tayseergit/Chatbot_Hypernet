@@ -11,6 +11,9 @@ from application.monitoring.logger import AppLogger
 from application.aspects.logging_aspect import log_operation
 
 
+from application.shared.utils.tracer import trace_all_methods
+
+@trace_all_methods
 class ResponseService:
     """Generates and formats final user-facing responses."""
 

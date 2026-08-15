@@ -561,7 +561,6 @@ class ToolExecutor:
                     data["ai_business_logic_notes"] = notes
                 
                 return response
-                
             elif tool_name == "get_invoices":
                 if not customer_id:
                     return {"success": False, "error": "Customer ID required"}

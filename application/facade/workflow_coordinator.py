@@ -1,5 +1,5 @@
  
-from typing import Dict, Any
+from typing import Dict, Any, Callable
 from application.shared.dto.agent_decision import AgentDecision
 from application.shared.exceptions.permission_exceptions import (
     PermissionDeniedException,
@@ -8,6 +8,9 @@ from application.shared.exceptions.permission_exceptions import (
 from application.monitoring.logger import AppLogger
 
 
+from application.shared.utils.tracer import trace_all_methods
+
+@trace_all_methods
 class WorkflowCoordinator:
     """Coordinates execution of services based on AgentDecision.
 
@@ -32,6 +35,7 @@ class WorkflowCoordinator:
         image_bytes: bytes = None,
         session_id: str = None,
         customer_id: str = None,
+        stream_callback: Callable[[str], None] = None
     ) -> Dict[str, Any]:
         """Execute required services and gather results to generate an LLM response.
 
@@ -39,6 +43,7 @@ class WorkflowCoordinator:
             PermissionDeniedException: if any required service/tool is blocked
             AgentEmergencyStopException: if the global emergency stop is active
         """
+
         requires = decision.requires
         self._logger.info(f"Executing workflow for intent '{decision.intent}', requiring: {requires}")
 
@@ -132,31 +137,52 @@ class WorkflowCoordinator:
             image_bytes = None
 
         # 4. Dispatch to the appropriate LLM Prompt Pipeline
-        if "RAG" in requires and "CRM" in requires:
-            llm_answer = self._llm.generate_combined_response(
-                question=message_text,
-                intent=decision.intent,
-                rag_context=rag_context,
-                crm_data=crm_data,
-                history=history,
-                image_bytes=image_bytes
-            )
-        elif "RAG" in requires:
-            llm_answer = self._llm.generate_rag_answer(
-                question=message_text,
-                context=rag_context,
-                history=history,
-                image_bytes=image_bytes
-            )
-        elif "CRM" in requires:
-            llm_answer = self._llm.summarize_crm_data(
-                question=message_text,
-                crm_data=crm_data,
-                history=history,
-                image_bytes=image_bytes
-            )
+        llm_answer = ""
+        if stream_callback:
+            if "RAG" in requires and "CRM" in requires:
+                generator = self._llm.generate_combined_response_stream(
+                    question=message_text, intent=decision.intent, rag_context=rag_context, crm_data=crm_data, history=history, image_bytes=image_bytes
+                )
+            elif "RAG" in requires:
+                generator = self._llm.generate_rag_answer_stream(
+                    question=message_text, context=rag_context, history=history, image_bytes=image_bytes
+                )
+            elif "CRM" in requires:
+                generator = self._llm.summarize_crm_data_stream(
+                    question=message_text, crm_data=crm_data, history=history, image_bytes=image_bytes
+                )
+            else:
+                generator = self._llm.generate_greeting_stream(message_text)
+                
+            for chunk in generator:
+                llm_answer += chunk
+                stream_callback(chunk)
         else:
-            llm_answer = self._llm.generate_greeting(message_text)
+            if "RAG" in requires and "CRM" in requires:
+                llm_answer = self._llm.generate_combined_response(
+                    question=message_text,
+                    intent=decision.intent,
+                    rag_context=rag_context,
+                    crm_data=crm_data,
+                    history=history,
+                    image_bytes=image_bytes
+                )
+            elif "RAG" in requires:
+                llm_answer = self._llm.generate_rag_answer(
+                    question=message_text,
+                    context=rag_context,
+                    history=history,
+                    image_bytes=image_bytes
+                )
+            elif "CRM" in requires:
+                llm_answer = self._llm.summarize_crm_data(
+                    question=message_text,
+                    crm_data=crm_data,
+                    history=history,
+                    image_bytes=image_bytes
+                )
+            else:
+                llm_answer = self._llm.generate_greeting(message_text)
 
         self._logger.info(f"Workflow execution complete for '{decision.intent}'")
 

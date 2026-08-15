@@ -16,6 +16,9 @@ from backend_service.core.database import Base, engine
 Base.metadata.create_all(bind=engine)
 
 app = Flask(__name__)
+app.config['JSON_AS_ASCII'] = False
+if hasattr(app, 'json'):
+    app.json.ensure_ascii = False
 log_service = CRMLogService()
 
 @app.route('/')
@@ -27,6 +30,25 @@ def get_logs():
     # Fetch latest 100 logs
     logs = log_service.get_logs(limit=100)
     return jsonify(logs)
+
+@app.route('/api/traces')
+def get_traces():
+    import json
+    log_file = os.path.join(os.getcwd(), "logs", "traces.jsonl")
+    if not os.path.exists(log_file):
+        return jsonify({"traces": []})
+        
+    traces = []
+    with open(log_file, "r", encoding="utf-8") as f:
+        for line in f:
+            if line.strip():
+                try:
+                    traces.append(json.loads(line))
+                except:
+                    pass
+                    
+    # Return newest first
+    return jsonify({"traces": traces[::-1]})
 
 if __name__ == '__main__':
     print("="*50)

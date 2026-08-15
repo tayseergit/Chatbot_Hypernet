@@ -364,12 +364,13 @@ class TelegramBot:
                 user_name = update.effective_user.first_name or "مستخدم"
                 task = asyncio.create_task(asyncio.to_thread(
                     self._facade.handle_message, 
-                    user_id, 
-                    message_text, 
+                    user_id=user_id, 
+                    message_text=message_text, 
                     user_name=user_name,
                     image_bytes=image_bytes, 
-                    image_path=image_path
-                    # Note: stream_callback removed to prevent signature crash (Facade doesn't support streaming yet)
+                    image_path=image_path,
+                    stream_callback=stream_callback
+                ))
                 ))
                 
                 placeholder_msg = await message.reply_text("⏳...")

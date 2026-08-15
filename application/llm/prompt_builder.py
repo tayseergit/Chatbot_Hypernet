@@ -3,6 +3,9 @@
 from typing import Any, Dict, Optional
 
 
+from application.shared.utils.tracer import trace_all_methods
+
+@trace_all_methods
 class PromptBuilder:
     """Builds structured prompts for different LLM use cases."""
 
@@ -130,8 +133,9 @@ class PromptBuilder:
         return f"الوقت والتاريخ الحالي (بتوقيت GMT+3): {datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')}\n\n"
 
     def build_rag_prompt(self, question: str, context: str, history: str = "") -> str:
-        from application.shared.configuration.app_config import _whatsapp
-        base = self.RAG_ANSWER_TEMPLATE.format(context=context, question=question, history=history, whatsapp_link=_whatsapp)
+        from application.shared.configuration.app_config import _whatsapp, AppConfig
+        _renewal_day = AppConfig.from_env().crm.renewal_day
+        base = self.RAG_ANSWER_TEMPLATE.format(context=context, question=question, history=history, whatsapp_link=_whatsapp, renewal_day=_renewal_day)
         return self._get_current_time_str() + self._get_company_info() + self._get_pdf_instructions() + base
 
     def build_crm_prompt(self, question: str, crm_data: str, history: str = "") -> str:
@@ -141,30 +145,32 @@ class PromptBuilder:
 
     def build_combined_prompt(self, question: str, intent: str,
                               rag_context: str, crm_data: str, history: str = "") -> str:
-        from application.shared.configuration.app_config import _whatsapp
+        from application.shared.configuration.app_config import _whatsapp, AppConfig
+        _renewal_day = AppConfig.from_env().crm.renewal_day
         
         diagnostic_rules = ""
         if intent == "troubleshoot_slow_internet":
-            diagnostic_rules = """
-قواعد هامة جداً لتشخيص مشكلة "ضعف الإنترنت":
+            diagnostic_rules = f"""
+قواعد هامة جداً لتشخيص مشكلة "ضعف الإنترنت" (نفذها بالترتيب وتوقف عند إيجاد المشكلة):
 تحذير: أنت الآن تقوم بخطوات تشخيصية متسلسلة للعميل. يجب عليك تنفيذ خطوة واحدة فقط في كل رد وتنتظر إجابة العميل (حوار). لا تقم أبداً بسرد كل الخطوات دفعة واحدة.
-1. تأكد من أن الراوتر متصل (online). إذا كان غير متصل (offline)، أخبر العميل أن المشكلة هي أن الراوتر مطفأ أو غير متصل وعليه التأكد من تشغيله، وتوقف.
-2. إذا كان متصلاً، تحقق من معدل السحب (السرعة الحالية). اطلب من العميل تشغيل فيديو يوتيوب أو شيء يستهلك الإنترنت، واطلب منه أن يراسلك **أثناء تشغيل الفيديو** (وليس بعد الانتهاء منه) لتتمكن من فحص السحب الفعلي في اللحظة التي يتم فيها استهلاك الإنترنت. وتوقف لانتظار رده لتفحص السحب في الرد القادم.
-3. إذا أخبرك العميل أنه شغل الفيديو، قم بمقارنة السحب مع السرعة المسجلة في باقته. ملاحظة هامة: التشخيص يعتمد **فقط على سرعة التحميل (Download)** ولا يهم الرفع. إذا كانت سرعة التحميل قريبة من الحد الأقصى للباقة (حتى لو كانت أقل بقليل، مثلاً 800 كيلوبت لباقة 1 ميغا)، أخبره أن الإنترنت يصله بالكامل وأن المشكلة قد تكون من الأجهزة المتصلة أو تحديثات في الخلفية أو وجود أشخاص آخرين على الشبكة.
-4. افحص الجلسات (UserSession). إذا وجدت تقطيعاً متكرراً (مثل وجود عدة جلسات تنتهي بسبب Lost-Carrier)، أخبره أن هناك مشكلة في الخط تؤدي لفصل الجلسات.
-5. أخبره أنك ستقوم بـ "فصل الجلسة" من النظام لإعادة تهيئة اتصاله (ملاحظة: هذا الإجراء يطبق على جميع الاشتراكات سواء ADSL أو وايرلس، فلا تقل "بما أنك ADSL سأفصل الجلسة").
-6. إذا لم تحل المشكلة بعد كل هذا:
+1.  انظر إلى تاريخ اليوم المكتوب في أعلى الرسالة. إذا كان اليوم هو ({_renewal_day}) من الشهر أو بعده بقليل، وتحققت من جلسة العميل الحالية (التي لا تملك acctstoptime) ووجدت أن تاريخ بدايتها (acctstarttime) كان **قبل** يوم ({_renewal_day}) من الشهر، فهذا يعني أن باقة العميل قد تجددت ولكن سرعته لا تزال بطيئة لأن جلسته قديمة ولم تسحب السرعة الجديدة بعد التجديد. أخبره أن يفصل الراوتر ويعيد تشغيله، أو اعرض عليه فصل الجلسة من النظام وتوقف هنا.
+2. تأكد من أن الراوتر متصل (online). إذا كان غير متصل (offline)، أخبر العميل أن المشكلة هي أن الراوتر مطفأ أو غير متصل وعليه التأكد من تشغيله، وتوقف.
+3. إذا كان متصلاً، تحقق من معدل السحب (السرعة الحالية). اطلب من العميل تشغيل فيديو يوتيوب أو شيء يستهلك الإنترنت، واطلب منه أن يراسلك **أثناء تشغيل الفيديو** (وليس بعد الانتهاء منه) لتتمكن من فحص السحب الفعلي في اللحظة التي يتم فيها استهلاك الإنترنت. وتوقف لانتظار رده لتفحص السحب في الرد القادم.
+4. إذا أخبرك العميل أنه شغل الفيديو، قم بمقارنة السحب مع السرعة المسجلة في باقته. ملاحظة هامة: التشخيص يعتمد **فقط على سرعة التحميل (Download)** ولا يهم الرفع. إذا كانت سرعة التحميل قريبة من الحد الأقصى للباقة (حتى لو كانت أقل بقليل، مثلاً 800 كيلوبت لباقة 1 ميغا)، أخبره أن الإنترنت يصله بالكامل وأن المشكلة قد تكون من الأجهزة المتصلة أو تحديثات في الخلفية أو وجود أشخاص آخرين على الشبكة.
+5. افحص الجلسات (UserSession). إذا وجدت تقطيعاً متكرراً (مثل وجود عدة جلسات تنتهي بسبب Lost-Carrier)، أخبره أن هناك مشكلة في الخط تؤدي لفصل الجلسات.
+6. أخبره أنك ستقوم بـ "فصل الجلسة" من النظام لإعادة تهيئة اتصاله (ملاحظة: هذا الإجراء يطبق على جميع الاشتراكات سواء ADSL أو وايرلس، فلا تقل "بما أنك ADSL سأفصل الجلسة").
+7. إذا لم تحل المشكلة بعد كل هذا:
    - إذا كان نوع اشتراكه وايرلس (Wi-Fi/Microwave)، لا تطلب منه قيم الراوتر أبداً، بل اطلب منه فوراً التواصل مع الدعم الفني البشري وقدم له الرابط.
    - إذا كان اشتراكه (ADSL)، اطلب منه إرسال صورة لقيم الراوتر (مثل SNR و CRC) وأرشده لكيفية استخراجها بخطوات واضحة وبسيطة (مثلاً: الدخول إلى 192.168.1.1، وتسجيل الدخول باسم المستخدم وكلمة المرور وغالباً ما تكون admin / admin، ثم التوجه إلى قسم Status أو ADSL أو Device Info، وتصوير الشاشة التي تحتوي على الأرقام). وتوقف لانتظار إرسال الصورة.
-7. عندما يرسل العميل الصورة، افحصها جيداً:
+8. عندما يرسل العميل الصورة، افحصها جيداً:
    - إذا كانت تحتوي على قيم SNR و CRC: قم بتحليل القيم مقارنة بسرعته وأخبره ببساطة إن كانت المشكلة من جودة الخط وتشويشه أم لا، ثم وجهه فوراً للدعم الفني البشري لمتابعة حالته.
    - إذا كانت الصورة لصفحة إعدادات الراوتر ولكنها **لا تحتوي** على القيم المطلوبة: قم بتحليل القوائم الظاهرة في الصورة نفسها بدقة (مثلاً: ابحث عن قوائم مثل DSL Setting أو Status أو Advanced في صورته)، وأرشده خطوة بخطوة للضغط على القسم الصحيح بناءً على ما تراه في صورته تحديداً، ولا تستخدم إجابات جاهزة عن أنواع راوترات أخرى (مثل TP-Link) إذا لم تكن مطابقة لصورته.
-8. ملاحظة هامة جداً بخصوص الوحدات: السرعة تقاس بالميغابت (mb أو Mbps) وليس بالميغابايت (MB). احرص دائماً على كتابة "Mbps" أو "ميغا" عند ذكر سرعة الإنترنت ولا تكتب "MB" أبداً.
+9. ملاحظة هامة جداً بخصوص الوحدات: السرعة تقاس بالميغابت (mb أو Mbps) وليس بالميغابايت (MB). احرص دائماً على كتابة "Mbps" أو "ميغا" عند ذكر سرعة الإنترنت ولا تكتب "MB" أبداً.
 """
 
         base = self.COMBINED_TEMPLATE.format(
             intent=intent, rag_context=rag_context,
-            crm_data=crm_data, question=question, history=history, whatsapp_link=_whatsapp
+            crm_data=crm_data, question=question, history=history, whatsapp_link=_whatsapp, renewal_day=_renewal_day
         )
         return self._get_current_time_str() + self._get_company_info() + self._get_pdf_instructions() + diagnostic_rules + base
 

@@ -5,6 +5,21 @@ from typing import Dict, Any, List, Optional
 from backend_service.crm.crm_auth_manager import CRMAuthManager
 from backend_service.core.services.crm_log_service import CRMLogService
 
+from application.shared.utils.tracer import trace_all_methods
+from cachetools import cached, TTLCache
+import cachetools.keys
+
+# Define TTL caches for CRM requests
+_phone_cache = TTLCache(maxsize=1000, ttl=600)        # 10 mins
+_username_cache = TTLCache(maxsize=1000, ttl=180)     # 3 mins
+_profile_cache = TTLCache(maxsize=1000, ttl=3600)     # 1 hour
+_packages_cache = TTLCache(maxsize=1000, ttl=1800)    # 30 mins
+_iptv_cache = TTLCache(maxsize=1000, ttl=600)         # 10 mins
+
+def _ignore_self_key(self, *args, **kwargs):
+    return cachetools.keys.hashkey(*args, **kwargs)
+
+@trace_all_methods
 class CRMClient:
     """Base client for CRM API requests with automatic redaction and logging."""
     def __init__(self):
@@ -83,16 +98,19 @@ class CRMClient:
             self._logger.error(f"CRM POST request failed: {e}")
             return {"success": False, "error": "CRM Connection Error"}
 
+    @cached(cache=_phone_cache, key=_ignore_self_key)
     def search_user_by_phone(self, phone: str) -> Dict[str, Any]:
         """Search for a user by phone number using the CRM."""
         url = f"{self._auth_manager._base_url}/users?search={phone}&limit=10"
         return self.get(url, allowed_fields=["id", "phone", "username", "data"])
 
+    @cached(cache=_username_cache, key=_ignore_self_key)
     def search_users(self, search_term: str) -> Dict[str, Any]:
         """Search for users (e.g. by username) and return full data for extraction."""
         url = f"{self._auth_manager._base_url}/users?search={search_term}&limit=10&order_by=username&order_direction=desc"
         return self.get(url)
 
+    @cached(cache=_profile_cache, key=_ignore_self_key)
     def get_profile(self, profile_id: int) -> Dict[str, Any]:
         """Fetch profile details."""
         url = f"{self._auth_manager._base_url}/profiles/{profile_id}"
@@ -111,6 +129,7 @@ class CRMClient:
         url = f"{self._auth_manager._base_url}/router-os/user/{customer_id}/rate"
         return self.get(url)
 
+    @cached(cache=_packages_cache, key=_ignore_self_key)
     def get_available_packages(self, customer_id: str) -> Dict[str, Any]:
         """Fetch available top-up packages for the user."""
         url = f"{self._auth_manager._base_url}/packages?user_id={customer_id}"
@@ -227,6 +246,7 @@ class CRMClient:
         payload = {"username": username}
         return self.post(url, payload)
 
+    @cached(cache=_iptv_cache, key=_ignore_self_key)
     def get_iptv_expiration(self, customer_id: str) -> Dict[str, Any]:
         """Fetch the IPTV expiration date for a user."""
         url = f"{self._auth_manager._base_url}/iptv/user/{customer_id}/expiration"
@@ -236,6 +256,17 @@ class CRMClient:
         """Fetch user invoices for calculating loan packages."""
         url = f"{self._auth_manager._base_url}/users/{customer_id}/invoices?limit=12&page=1"
         return self.get(url)
+
+    def get_invoice_amount(self, username: str) -> Dict[str, Any]:
+        """Fetch the invoice details and amount for a user."""
+        url = f"{self._auth_manager._base_url}/invoice/amount"
+        payload = {"username": username}
+        allowed = [
+            "adsl_service_amount", "iptv_service_amount", "days_extends_amount", 
+            "packages_amount", "adsl_monthes", "total_extends", "total_amount", 
+            "is_overdue", "discount_type", "discount_amount", "final_amount"
+        ]
+        return self.post(url, payload, allowed_fields=allowed)
 
     def activate_package(self, customer_id: str, package_id: int) -> Dict[str, Any]:
         """Activate a package for a user (loan or paid)."""

@@ -64,4 +64,47 @@ def create_app(facade) -> FastAPI:
             "actions": response.actions
         }
 
+    @app.get("/api/traces")
+    def get_traces():
+        """
+        API endpoint to read the traces.log file for the dashboard.
+        """
+        log_file = os.path.join(os.getcwd(), "logs", "traces.log")
+        if not os.path.exists(log_file):
+            return {"traces": []}
+            
+        with open(log_file, "r", encoding="utf-8") as f:
+            content = f.read()
+            
+        # Parse blocks separated by double newline
+        blocks = content.split("\n\n")
+        parsed_traces = []
+        for block in blocks:
+            if not block.strip():
+                continue
+            lines = block.strip().split("\n")
+            if not lines:
+                continue
+                
+            header = lines[0]
+            if "[TRACE ID:" not in header:
+                continue
+                
+            steps = []
+            total_time = ""
+            for line in lines[1:]:
+                if line.startswith("  "):
+                    steps.append(line.strip())
+                elif line.startswith("Total Time:"):
+                    total_time = line.replace("Total Time:", "").strip()
+                    
+            parsed_traces.append({
+                "header": header,
+                "steps": steps,
+                "total_time": total_time
+            })
+            
+        # Return newest first
+        return {"traces": parsed_traces[::-1]}
+
     return app
