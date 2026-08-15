@@ -35,7 +35,7 @@ class Application:
 
         # Initialize Backend Tier
         self._logger.info("Initializing Backend Foundation...")
-        self._backend = init_backend(create_schema=True)
+        self._backend = init_backend(create_schema=False)
 
         # Initialize facade
         self._facade = ChatbotFacade(self._config, self._backend)
@@ -43,6 +43,8 @@ class Application:
 
         if mode == "telegram":
             self._run_telegram()
+        elif mode == "api":
+            self._run_api()
         else:
             self._run_console()
 
@@ -99,6 +101,15 @@ class Application:
         bot = TelegramBot(token, self._facade)
         bot.start()
 
+    def _run_api(self) -> None:
+        """Run in FastAPI mode (which also starts Telegram in background)."""
+        self._logger.info("Starting FastAPI Server on port 8000...")
+        from presentation.api_server import create_app
+        import uvicorn
+        
+        app = create_app(self._facade)
+        uvicorn.run(app, host="0.0.0.0", port=8000)
+
     def shutdown(self) -> None:
         """Graceful shutdown."""
         if self._facade:
@@ -110,7 +121,7 @@ def main():
     """CLI entry point."""
     import argparse
     parser = argparse.ArgumentParser(description="AI ISP Chatbot Platform")
-    parser.add_argument("--mode", choices=["console", "telegram"],
+    parser.add_argument("--mode", choices=["console", "telegram", "api"],
                         default="console", help="Run mode")
     parser.add_argument("--knowledge", type=str, default=None,
                         help="Path to XLS knowledge base file")

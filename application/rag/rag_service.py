@@ -115,10 +115,15 @@ class RAGService:
         )
 
     def _read_xls(self, path: str) -> str:
-        """Read text content from an XLS/XLSX file."""
+        """Read text content from an XLS/XLSX or CSV file."""
         import pandas as pd
         try:
-            df = pd.read_excel(path)
+            try:
+                # Often files named .xls might actually be CSVs in disguise
+                df = pd.read_csv(path)
+            except Exception:
+                df = pd.read_excel(path)
+                
             text_parts = []
             for _, row in df.iterrows():
                 row_text = " ".join(str(val) for val in row.values if pd.notna(val))
@@ -126,7 +131,7 @@ class RAGService:
                     text_parts.append(row_text.strip())
             return "\n".join(text_parts)
         except Exception as e:
-            self._logger.error(f"Failed to read XLS file: {e}")
+            self._logger.error(f"Failed to read file {path}: {e}")
             raise RAGRetrievalError(f"Failed to read knowledge file: {e}")
 
     def _split_text(self, text: str, chunk_size: int, overlap: int) -> List[str]:

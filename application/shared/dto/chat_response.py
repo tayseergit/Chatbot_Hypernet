@@ -18,6 +18,7 @@ class ChatResponse:
     confidence: float = 0.0
     sources_used: list = field(default_factory=list)  # ["CRM", "RAG", etc.]
     metadata: Dict[str, Any] = field(default_factory=dict)
+    actions: list = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dictionary."""
@@ -30,6 +31,7 @@ class ChatResponse:
             "confidence": self.confidence,
             "sources_used": self.sources_used,
             "metadata": self.metadata,
+            "actions": self.actions,
         }
 
     @classmethod
@@ -46,6 +48,7 @@ class ChatResponse:
             confidence=data.get("confidence", 0.0),
             sources_used=data.get("sources_used", []),
             metadata=data.get("metadata", {}),
+            actions=data.get("actions", []),
         )
 
     @classmethod

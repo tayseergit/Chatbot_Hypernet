@@ -1,9 +1,12 @@
  
-from typing import Dict, Any
+from typing import Dict, Any, Callable
 from application.shared.dto.agent_decision import AgentDecision
 from application.monitoring.logger import AppLogger
 
 
+from application.shared.utils.tracer import trace_all_methods
+
+@trace_all_methods
 class WorkflowCoordinator:
     """Coordinates execution of services based on AgentDecision."""
 
@@ -13,7 +16,7 @@ class WorkflowCoordinator:
         self._llm = llm_service
         self._logger = AppLogger.get_logger("workflow_coordinator")
 
-    def execute_workflow(self, decision: AgentDecision, message_text: str) -> Dict[str, Any]:
+    def execute_workflow(self, decision: AgentDecision, message_text: str, history: str = "", image_bytes: bytes = None, stream_callback: Callable[[str], None] = None) -> Dict[str, Any]:
         """Execute required services and gather results to generate an LLM response."""
         requires = decision.requires
         self._logger.info(f"Executing workflow for intent '{decision.intent}', requiring: {requires}")
@@ -48,26 +51,58 @@ class WorkflowCoordinator:
                 crm_data = {"error": str(e)}
                 crm_result = type("CRMResult", (), {"success": False, "error": str(e)})()
 
-        # 3. Dispatch to the appropriate LLM Prompt Pipeline
-        if "RAG" in requires and "CRM" in requires:
-            llm_answer = self._llm.generate_combined_response(
-                question=message_text,
-                intent=decision.intent,
-                rag_context=rag_context,
-                crm_data=crm_data
-            )
-        elif "RAG" in requires:
-            llm_answer = self._llm.generate_rag_answer(
-                question=message_text,
-                context=rag_context
-            )
-        elif "CRM" in requires:
-            llm_answer = self._llm.summarize_crm_data(
-                intent=decision.intent,
-                crm_data=crm_data
-            )
+        # 3. Restrict image processing to specific intent
+        if image_bytes and decision.intent not in ["troubleshoot_slow_internet", "dsl_line_values"]:
+            self._logger.info(f"Ignoring image since intent '{decision.intent}' does not require visual analysis.")
+            image_bytes = None
+
+        # 4. Dispatch to the appropriate LLM Prompt Pipeline
+        llm_answer = ""
+        if stream_callback:
+            if "RAG" in requires and "CRM" in requires:
+                generator = self._llm.generate_combined_response_stream(
+                    question=message_text, intent=decision.intent, rag_context=rag_context, crm_data=crm_data, history=history, image_bytes=image_bytes
+                )
+            elif "RAG" in requires:
+                generator = self._llm.generate_rag_answer_stream(
+                    question=message_text, context=rag_context, history=history, image_bytes=image_bytes
+                )
+            elif "CRM" in requires:
+                generator = self._llm.summarize_crm_data_stream(
+                    question=message_text, crm_data=crm_data, history=history, image_bytes=image_bytes
+                )
+            else:
+                generator = self._llm.generate_greeting_stream(message_text)
+                
+            for chunk in generator:
+                llm_answer += chunk
+                stream_callback(chunk)
         else:
-            llm_answer = self._llm.generate_greeting(message_text)
+            if "RAG" in requires and "CRM" in requires:
+                llm_answer = self._llm.generate_combined_response(
+                    question=message_text,
+                    intent=decision.intent,
+                    rag_context=rag_context,
+                    crm_data=crm_data,
+                    history=history,
+                    image_bytes=image_bytes
+                )
+            elif "RAG" in requires:
+                llm_answer = self._llm.generate_rag_answer(
+                    question=message_text,
+                    context=rag_context,
+                    history=history,
+                    image_bytes=image_bytes
+                )
+            elif "CRM" in requires:
+                llm_answer = self._llm.summarize_crm_data(
+                    question=message_text,
+                    crm_data=crm_data,
+                    history=history,
+                    image_bytes=image_bytes
+                )
+            else:
+                llm_answer = self._llm.generate_greeting(message_text)
 
         self._logger.info(f"Workflow execution complete for '{decision.intent}'")
 
@@ -84,10 +119,16 @@ class WorkflowCoordinator:
             "check_package": "get_current_package",
             "open_ticket": "get_customer_info",
             "check_ticket": "get_customer_info",
-            "billing": "get_invoices",
+            "billing": "get_invoice_amount",
+            "extend_bill": "check_extend_status",
             "contacts": "get_customer_info",
             "wireless_packages": "get_available_packages",
+            "adsl_packages": "get_available_packages",
+            "wireless_topup": "get_available_packages",
+            "bot_package_charging": "get_available_packages",
+            "subscription": "get_available_packages",
             "customer_info": "get_customer_info",
+            "troubleshoot_slow_internet": "get_troubleshooting_data",
         }
         return mapping.get(intent, "get_customer_info")
 
@@ -98,9 +139,15 @@ class WorkflowCoordinator:
             "check_package": "get_packages",
             "open_ticket": "create_ticket",
             "check_ticket": "get_tickets",
-            "billing": "get_billing",
+            "billing": "get_invoice_amount",
+            "extend_bill": "extend_bill",
             "contacts": "get_tickets",
             "wireless_packages": "get_packages",
+            "adsl_packages": "get_packages",
+            "wireless_topup": "get_packages",
+            "bot_package_charging": "get_packages",
+            "subscription": "get_packages",
+            "topup": "get_packages",
             "customer_info": "get_customer_info",
         }
         return mapping.get(intent, "get_customer_info")

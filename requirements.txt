@@ -22,3 +22,8 @@ python-telegram-bot>=20.0
 
 # Utilities
 python-dotenv>=1.0.0
+openai-whisper>=20231117
+
+fastapi
+uvicorn
+python-multipart

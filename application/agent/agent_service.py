@@ -15,6 +15,9 @@ from application.aspects.metrics_aspect import track_metrics
 from application.aspects.exception_aspect import handle_exceptions
 
 
+from application.shared.utils.tracer import trace_all_methods
+
+@trace_all_methods
 class AgentService:
   
 
@@ -60,6 +63,10 @@ class AgentService:
         # Pass customer_id from session context if available
         if "customer_id" in context:
             params["customer_id"] = context["customer_id"]
+
+        # Pass location if extracted by LLM
+        if "location" in context:
+            params["location"] = context["location"]
 
         # Pass the original query for RAG
         params["query"] = message

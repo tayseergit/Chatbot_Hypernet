@@ -7,7 +7,7 @@ The project utilizes a robust, multi-tier, modular architecture based on Domain-
 
 ### Root Files
 - `main.py`: Entry point for the application. Initializes the server and components.
-- `mock_crm_server.py`: Simulates a CRM backend for Model Context Protocol (MCP) interactions.
+
 - `database_setup.sql`: Database schema definition for MySQL persistence layer.
 - `requirements.txt`: Python package dependencies.
 
@@ -31,10 +31,8 @@ The project utilizes a robust, multi-tier, modular architecture based on Domain-
 - `metrics_aspect.py`: Performance and execution time tracking decorator.
 - `tracing_aspect.py`: Distributed tracing decorator.
 
-**CRM Integration (`application/crm_integration/`)**
-- `crm_connector.py`: Handles raw connections to the CRM.
-- `crm_service.py`: Business logic for CRM data retrieval and manipulation.
-- `mcp_client.py`: Client for MCP server communication.
+**CRM Integration (`backend_service/crm/`)**
+- `crm_client.py`: Handles direct HTTP REST connections to the live Hypernet CRM.
 
 **Facade (`application/facade/`)**
 - `chatbot_facade.py`: High-level entry point for interacting with the chatbot.
@@ -86,3 +84,28 @@ The project utilizes a robust, multi-tier, modular architecture based on Domain-
 - `chatbot_knowledge_base.md`: The raw knowledge base data, utilized by the RAG system but not executable code.
 - `explanation.txt`: A generic text file that appears to hold notes or explanations, not actively used by the application code.
 - `report.txt`: The very file this report is written into.
+
+## 4. Frameworks & Technologies Used
+
+The project relies on a carefully selected stack of modern tools, predominantly favoring "Pure Python" and Clean Architecture for maximum control and performance over bloated monolithic frameworks (like LangChain or LlamaIndex).
+
+### Core Application
+- **Python (Pure Python)**: The foundation of the system. Custom implementations are used for core logic (Intent Classification, Task Planning, Context Building) to ensure 100% control over the conversational AI workflow and zero reliance on fragile high-level AI frameworks.
+- **FastAPI**: A high-performance web framework used for the main API layer. It provides REST endpoints (e.g., `/api/chat`) and automated Swagger UI documentation, allowing the chatbot to be easily integrated into mobile or web applications.
+- **Uvicorn**: An ASGI web server implementation for Python, used to run the FastAPI application.
+
+### Artificial Intelligence & Machine Learning
+- **Google Generative AI (Gemini)**: The primary LLM (Large Language Model) provider used for generating conversational responses and intelligent troubleshooting.
+- **Sentence-Transformers**: Used to generate dense vector embeddings (e.g., `paraphrase-multilingual-MiniLM-L12-v2`) for Arabic semantic search and knowledge retrieval.
+- **ChromaDB**: An open-source vector database used as the memory backend for the RAG (Retrieval-Augmented Generation) system, storing and retrieving ISP technical support documents.
+
+### Integrations & Presentation
+- **python-telegram-bot**: A pure Python interface for the Telegram Bot API. It runs seamlessly as a background thread within the FastAPI process to service Telegram users directly.
+- **Requests / HTTP**: Used for communicating with the actual Hypernet CRM API to fetch live customer data (e.g., line status, SNR values) or execute remote actions (e.g., reset port).
+
+### Data Persistence
+- **SQLAlchemy**: The Python SQL toolkit and Object Relational Mapper (ORM), providing an efficient way to interact with the relational database.
+- **MySQL / PyMySQL**: Used for persistent storage of user sessions, chat history, and conversational state across API restarts.
+
+### Dashboard (Analytics)
+- **Flask**: A lightweight WSGI web framework used specifically to serve the internal analytics dashboard (`dashboard.py`), presenting live usage metrics and chat histories to administrators.

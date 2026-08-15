@@ -14,6 +14,9 @@ from application.shared.configuration.app_config import AppConfig
 
 
 from application.agent.intents import ALLOWED_INTENTS, INTENT_KEYWORDS, INTENT_SERVICE_MAP
+from application.shared.utils.tracer import trace_all_methods
+
+@trace_all_methods
 class IntentClassifier:
     """Classifies user messages into ISP-specific intents and service requirements."""
 
@@ -40,6 +43,8 @@ class IntentClassifier:
         if any(w == message_lower for w in goodbyes):
             return "services", [], 0.95, "Direct goodbye detected"
 
+        history_text = context.get("history", "") if context else ""
+
         if self._llm_service and self._config.llm.use_for_intent:
             intents_str = ", ".join(ALLOWED_INTENTS)
             prompt = (
@@ -47,10 +52,16 @@ class IntentClassifier:
                 "Analyze the user's message and select the exact intent and required backend services.\n"
                 f"ALLOWED INTENTS: [{intents_str}]\n"
                 "SERVICES RULES:\n"
-                "- Include \"RAG\" if the question requires looking up FAQ, troubleshooting, pricing, or general ISP knowledge.\n"
-                "- Include \"CRM\" if the question requires checking personal account balance, line status, packages, bills, or tickets.\n"
-                "- Include both [\"RAG\", \"CRM\"] if both knowledge and account lookups are needed.\n"
-                "- Return [] if no backend service is needed.\n\n"
+                "- Include \"RAG\" if the question is general and requires looking up FAQ, general troubleshooting steps, or public pricing.\n"
+                "- Include \"CRM\" ONLY if the question requires looking up the user's specific account (e.g. 'what is my balance', 'is my account active', 'what is my name', 'give me my router password / PPPoE settings', or specific complaints like 'my internet is disconnected' where checking their line status is necessary), OR if the user is asking about available packages or top-ups.\n"
+                "- Do NOT include \"CRM\" for general questions that apply to anyone (e.g. 'how do I configure a router in general', 'what are your ADSL prices'), EXCEPT for asking about available packages to top up.\n"
+                "- Include both [\"RAG\", \"CRM\"] if both general knowledge and personal account lookups are needed.\n"
+                "- If the user asks to extend their subscription time, borrow days, or says their subscription is over ('اشتراكي خالص', 'تمديد', 'سلفة'), select 'extend_bill' intent.\n"
+                "- If the user complains about slow internet ('النت ضعيف', 'النت بطيء', 'ضعف بالنت'), select 'troubleshoot_slow_internet' intent.\n"
+                "- VERY IMPORTANT: If the conversation history shows the bot is currently in the middle of troubleshooting slow internet (e.g. asking the user to play a video, or resetting the session), and the user is responding to that (e.g. 'done', 'it didn't work', 'now'), you MUST keep the intent as 'troubleshoot_slow_internet'.\n"
+                "- If the user is answering a question about speed (e.g. providing a number like '2' or '4'), the intent MUST be 'dsl_speed_change', NOT package charging.\n"
+                "- Return [] if no backend service is needed (e.g., greetings).\n\n"
+                f"Conversation History:\n{history_text}\n\n"
                 f"User Message: \"{message}\"\n\n"
                 "Respond ONLY with valid JSON in exactly this format:\n"
                 "{\"intent\": \"<intent_name>\", \"requires\": [\"RAG\"], \"reasoning\": \"<reason>\"}"
@@ -70,6 +81,7 @@ class IntentClassifier:
                     requires = ["RAG"]
                 reasoning = data.get("reasoning", f"LLM selected {intent}")
                 self._logger.info(f"LLM decision: intent={intent}, requires={requires}")
+                
                 return intent, requires, 0.85, reasoning
             except Exception as e:
                 self._logger.warning(f"LLM decision classification failed: {e}")

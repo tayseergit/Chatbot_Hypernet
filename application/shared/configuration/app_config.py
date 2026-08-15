@@ -4,8 +4,22 @@ Loads from environment variables with sensible defaults.
 """
 
 import os
+import json
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional
+
+# Base paths
+BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
+CONFIG_FILE_PATH = BASE_DIR / "config.json"
+
+def load_config():
+    if CONFIG_FILE_PATH.exists():
+        with open(CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+_config_data = load_config()
 
 try:
     from dotenv import load_dotenv
@@ -13,7 +27,15 @@ try:
 except ImportError:
     pass
 
-SUPPORT_FALLBACK_MESSAGE: str = "يرجى المتابعة مع الدعم الفني عبر واتساب: https://wa.me/967770000000"
+_whatsapp = _config_data.get("whatsapp_link", "https://wa.me/967770000000")
+_call_center = _config_data.get("call_center_number", "967770000000")
+SUPPORT_FALLBACK_MESSAGE = _config_data.get("messages", {}).get("fallback_error", "حدث خطأ. يرجى التواصل مع الدعم .").format(whatsapp_link=_whatsapp, call_center_number=_call_center)
+
+def get_message(key: str, **kwargs) -> str:
+    msg = _config_data.get("messages", {}).get(key, "")
+    kwargs.setdefault("whatsapp_link", _whatsapp)
+    kwargs.setdefault("call_center_number", _call_center)
+    return msg.format(**kwargs)
 
 
 @dataclass
@@ -25,7 +47,7 @@ class RAGConfig:
     overlap: int = 50
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     collection_name: str = "isp_knowledge"
-    n_results: int = 2
+    n_results: int = 10
     distance_threshold: float = 25.0
 
 
@@ -54,6 +76,7 @@ class CRMConfig:
     timeout: int = 30
     max_retries: int = 3
     retry_delay: float = 1.0
+    renewal_day: int = 3
 
 
 @dataclass
@@ -84,6 +107,16 @@ class SessionConfig:
     ttl_minutes: int = 60
     max_history: int = 20
     cleanup_interval_minutes: int = 10
+
+
+@dataclass
+class SecurityConfig:
+    spam_max_calls_per_window: int = 10
+    spam_time_window_seconds: int = 20
+    spam_block_duration_minutes: int = 5
+    max_images_per_month: int = 15
+    max_voices_per_month: int = 50
+    max_messages_per_month: int = 200
 
 
 @dataclass
@@ -126,6 +159,7 @@ class AppConfig:
     session: SessionConfig = field(default_factory=SessionConfig)
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
     monitoring: MonitoringConfig = field(default_factory=MonitoringConfig)
+    security: SecurityConfig = field(default_factory=SecurityConfig)
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -159,6 +193,7 @@ class AppConfig:
         config.crm.base_url = os.getenv("CRM_BASE_URL", config.crm.base_url)
         config.crm.api_key = os.getenv("CRM_API_KEY", config.crm.api_key)
         config.crm.timeout = int(os.getenv("CRM_TIMEOUT", config.crm.timeout))
+        config.crm.renewal_day = int(os.getenv("ISP_RENEWAL_DAY", config.crm.renewal_day))
 
         # Database (MySQL)
         config.database.host = os.getenv("DB_HOST", config.database.host)
@@ -182,5 +217,13 @@ class AppConfig:
         config.monitoring.enable_tracing = (
             os.getenv("ENABLE_TRACING", "true").lower() == "true"
         )
+
+        # Security & Spam Limits
+        config.security.spam_max_calls_per_window = int(os.getenv("SPAM_MAX_CALLS", config.security.spam_max_calls_per_window))
+        config.security.spam_time_window_seconds = int(os.getenv("SPAM_WINDOW_SECONDS", config.security.spam_time_window_seconds))
+        config.security.spam_block_duration_minutes = int(os.getenv("SPAM_BLOCK_MINUTES", config.security.spam_block_duration_minutes))
+        config.security.max_images_per_month = int(os.getenv("MAX_IMAGES_PER_MONTH", config.security.max_images_per_month))
+        config.security.max_voices_per_month = int(os.getenv("MAX_VOICES_PER_MONTH", config.security.max_voices_per_month))
+        config.security.max_messages_per_month = int(os.getenv("MAX_MESSAGES_PER_MONTH", config.security.max_messages_per_month))
 
         return config
