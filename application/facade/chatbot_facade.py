@@ -6,7 +6,8 @@ Key design: Agent decides WHAT, Facade decides HOW.
 """
 
 import time
-from typing import Optional
+import asyncio
+from typing import Dict, Any, Optional, List, Callable
 
 from application.shared.configuration.app_config import AppConfig, SUPPORT_FALLBACK_MESSAGE
 from application.shared.dto.chat_message import ChatMessage
@@ -72,6 +73,10 @@ class ChatbotFacade:
 
         # Initialize Middleware Pipeline
         self._pipeline = MiddlewarePipeline()
+        
+        from application.middlewares.rate_limit_middleware import RateLimitMiddleware
+        self._pipeline.register(RateLimitMiddleware(self._backend))
+        
         self._pipeline.register(AuthMiddleware(self._backend))
 
         self._initialized = False
@@ -94,9 +99,9 @@ class ChatbotFacade:
 
         # Check LLM health
         if self._llm_service.health_check():
-            self._logger.info("✓ LLM (Ollama) is available")
+            self._logger.info("[OK] LLM is available")
         else:
-            self._logger.warning("✗ LLM (Ollama) is not available")
+            self._logger.warning("[FAIL] LLM is not available")
 
         self._initialized = True
         self._logger.info("Chatbot platform initialized successfully")
@@ -105,7 +110,7 @@ class ChatbotFacade:
     @track_metrics("handle_message")
     @trace_operation("facade.handle_message")
     @trace_step
-    def handle_message(self, user_id: str, message_text: str, image_bytes: Optional[bytes] = None, image_path: Optional[str] = None) -> ChatResponse:
+    def handle_message(self, user_id: str, message_text: str, image_bytes: Optional[bytes] = None, image_path: Optional[str] = None, stream_callback: Callable[[str], None] = None) -> ChatResponse:
         """
         Main entry point for an incoming chat message. — the MAIN entry point.
 
@@ -142,10 +147,15 @@ class ChatbotFacade:
             t1 = time.time()
             history_objs = self._backend.message_service.load_history(session.session_id, limit=40, days=7)
             history_text = "\n".join([f"{m.sender}: {m.content}" for m in history_objs])
+            
+            # Use a smaller history context for intent classification to improve performance
+            agent_history_objs = history_objs[-10:] if len(history_objs) > 10 else history_objs
+            agent_history_text = "\n".join([f"{m.sender}: {m.content}" for m in agent_history_objs])
+            
             context = {
                 "session_id": session.session_id,
                 "customer_id": session.customer_id or "unknown",
-                "history": history_text,
+                "history": agent_history_text,
             }
             decision = self._agent.analyze(message_text, context)
 
@@ -170,7 +180,7 @@ class ChatbotFacade:
                 decision.parameters["crm_customer_id"] = session.customer_id
                 
             workflow_results = self._coordinator.execute_workflow(
-                decision, message_text, history=history_text, image_bytes=image_bytes
+                decision, message_text, history=history_text, image_bytes=image_bytes, stream_callback=stream_callback
             )
             t_workflow = (time.time() - t2) * 1000
             self._logger.info(f"Step 3 - Workflow Execution Time: {t_workflow:.2f}ms")
@@ -222,9 +232,28 @@ class ChatbotFacade:
 
     def logout_user(self, user_id: str) -> str:
         """Logs out the user and starts a fresh session."""
+        session = self._backend.session_service.get_or_create_session(user_id)
+        if not session.authed and session.auth_state != "AUTHENTICATED":
+            return "عذراً، أنت لست مسجلاً للدخول حالياً. ❌"
+            
         self._backend.session_service.close_session(user_id)
         self._logger.info(f"User {user_id} logged out. Session closed.")
         return "تم تسجيل الخروج بنجاح. تم مسح بيانات الجلسة الحالية."
+
+    @trace_step
+    def reset_history(self, user_id: str) -> str:
+        """Reset chat history for the user without logging them out."""
+        session = self._backend.session_service.get_or_create_session(user_id)
+        if not session.authed and session.auth_state != "AUTHENTICATED":
+            return "عذراً، يجب تسجيل الدخول أولاً لاستخدام هذه الميزة. ❌"
+            
+        new_session = self._backend.session_service.rotate_session(user_id)
+        
+        # Clear auth_attempts just in case, though it's a new session
+        self._backend.context_service.delete_context(new_session.session_id, "auth_attempts")
+        
+        self._logger.info(f"User {user_id} rotated session to {new_session.session_id} to reset context.")
+        return "تم مسح سياق المحادثة السابقة بنجاح!\n\n(بإمكاني الآن الإجابة على مواضيع جديدة تماماً دون ربطها بما سبق)."
 
     @log_operation()
     @trace_step

@@ -59,6 +59,13 @@ class LLMService:
         )
         return self._parser.parse_response(raw)
 
+    def generate_rag_answer_stream(self, question: str, context: str, history: str = "", image_bytes: Optional[bytes] = None):
+        """Generate an answer using RAG context (streaming)."""
+        prompt = self._prompt_builder.build_rag_prompt(question, context, history)
+        options = {"image_bytes": image_bytes} if image_bytes else None
+        for chunk in self._engine.infer_stream(prompt, options):
+            yield chunk
+
     @log_operation()
     @track_metrics("llm_crm_summary")
     def summarize_crm_data(self, question: str, crm_data: Dict, history: str = "", image_bytes: Optional[bytes] = None) -> str:
@@ -75,6 +82,14 @@ class LLMService:
             response={"raw_answer": raw}, status_code=200, latency_ms=latency
         )
         return self._parser.parse_response(raw)
+
+    def summarize_crm_data_stream(self, question: str, crm_data: Dict, history: str = "", image_bytes: Optional[bytes] = None):
+        """Answer the user's question using CRM data (streaming)."""
+        data_str = json.dumps(crm_data, ensure_ascii=False, indent=2)
+        prompt = self._prompt_builder.build_crm_prompt(question, data_str, history)
+        options = {"image_bytes": image_bytes} if image_bytes else None
+        for chunk in self._engine.infer_stream(prompt, options):
+            yield chunk
 
     @log_operation()
     @track_metrics("llm_combined")
@@ -96,12 +111,29 @@ class LLMService:
         )
         return self._parser.parse_response(raw)
 
+    def generate_combined_response_stream(self, question: str, intent: str,
+                                    rag_context: str, crm_data: Dict, history: str = "", image_bytes: Optional[bytes] = None):
+        """Generate response using both RAG and CRM data (streaming)."""
+        data_str = json.dumps(crm_data, ensure_ascii=False, indent=2)
+        prompt = self._prompt_builder.build_combined_prompt(
+            question, intent, rag_context, data_str, history
+        )
+        options = {"image_bytes": image_bytes} if image_bytes else None
+        for chunk in self._engine.infer_stream(prompt, options):
+            yield chunk
+
     @log_operation()
     def generate_greeting(self, message: str) -> str:
         """Generate a greeting response."""
         prompt = self._prompt_builder.build_greeting_prompt(message)
         raw = self._engine.infer(prompt)
         return self._parser.parse_response(raw)
+
+    def generate_greeting_stream(self, message: str):
+        """Generate a greeting response (streaming)."""
+        prompt = self._prompt_builder.build_greeting_prompt(message)
+        for chunk in self._engine.infer_stream(prompt):
+            yield chunk
 
     def generate_raw(self, prompt: str) -> str:
         """Generate raw LLM output (used for intent classification)."""

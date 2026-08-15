@@ -45,61 +45,55 @@ class TelegramBot:
 
         self._logger.info("Starting Telegram bot...")
 
-        self._app = ApplicationBuilder().token(self._token).build()
+        async def post_init(application):
+            from telegram import BotCommand
+            commands = [
+                BotCommand("start", "بدء المحادثة"),
+                BotCommand("new", "بدء موضوع جديد (نسيان السياق السابق)"),
+                BotCommand("logout", "تسجيل الخروج من حسابك")
+            ]
+            await application.bot.set_my_commands(commands)
+
+        self._app = ApplicationBuilder().token(self._token).post_init(post_init).build()
 
         # Register handlers
         self._app.add_handler(CommandHandler("start", self._handle_start))
-        self._app.add_handler(CommandHandler("help", self._handle_help))
-        self._app.add_handler(CommandHandler("stats", self._handle_stats))
         self._app.add_handler(CommandHandler("logout", self._handle_logout))
-        self._app.add_handler(CommandHandler("reset", self._handle_logout))
+        self._app.add_handler(CommandHandler("new", self._handle_new))
         self._app.add_handler(CallbackQueryHandler(self._handle_callback_query))
         self._app.add_handler(
             MessageHandler((filters.TEXT | filters.CONTACT | filters.PHOTO | filters.VOICE | filters.AUDIO) & ~filters.COMMAND, self._handle_message)
         )
+        # Commands menu is now set in post_init
 
         self._logger.info("Telegram bot started — polling for messages...")
-        print("🤖 Telegram bot is running! Send messages to your bot.")
+        print("[START] Telegram bot is running! Send messages to your bot.")
         self._app.run_polling()
 
     async def _handle_start(self, update, context) -> None:
         """Handle /start command."""
         user_id = str(update.effective_user.id)
         welcome = (
-            "مرحباً بك في مساعد خدمات الإنترنت! 🌐\n\n"
+            "مرحباً بك في مساعد خدمات الإنترنت!\n\n"
             "أنا هنا لمساعدتك في:\n"
             "• الاستعلام عن رصيدك\n"
             "• معرفة باقتك الحالية\n"
-            "• فتح تذكرة دعم فني\n"
             "• الإجابة على أسئلتك\n\n"
             "اكتب سؤالك وسأساعدك! 💬"
         )
         await update.message.reply_text(welcome)
 
-    async def _handle_help(self, update, context) -> None:
-        """Handle /help command."""
-        help_text = (
-            "📋 الأوامر المتاحة:\n\n"
-            "/start - بدء المحادثة\n"
-            "/help - عرض المساعدة\n"
-            "/stats - إحصائيات الاستخدام\n\n"
-            "أو اكتب سؤالك مباشرة!"
-        )
-        await update.message.reply_text(help_text)
-
-    async def _handle_stats(self, update, context) -> None:
-        """Handle /stats command."""
-        import json
-        stats = await asyncio.to_thread(self._facade.get_analytics)
-        text = f"📊 إحصائيات النظام:\n\n"
-        text += f"إجمالي الاستفسارات: {stats.get('total_queries', 0)}\n"
-        text += f"الجلسات النشطة: {stats.get('active_sessions', 0)}\n"
-        await update.message.reply_text(text)
-
     async def _handle_logout(self, update, context) -> None:
-        """Handle /logout or /reset command."""
+        """Handle /logout command."""
         user_id = str(update.effective_user.id)
         response_msg = await asyncio.to_thread(self._facade.logout_user, user_id)
+        from telegram import ReplyKeyboardRemove
+        await update.message.reply_text(response_msg, reply_markup=ReplyKeyboardRemove())
+
+    async def _handle_new(self, update, context) -> None:
+        """Handle /new command to reset chat history context."""
+        user_id = str(update.effective_user.id)
+        response_msg = await asyncio.to_thread(self._facade.reset_history, user_id)
         from telegram import ReplyKeyboardRemove
         await update.message.reply_text(response_msg, reply_markup=ReplyKeyboardRemove())
 
@@ -252,8 +246,25 @@ class TelegramBot:
             image_bytes = None
             image_path = None
             if message.contact:
-                message_text = message.contact.phone_number
+                if message.contact.user_id == update.effective_user.id:
+                    message_text = f"VERIFIED_PHONE:{message.contact.phone_number}"
+                else:
+                    await message.reply_text("❌ الرجاء مشاركة جهة اتصالك الخاصة حصراً باستخدام الزر المخصص.")
+                    return
             elif message.photo:
+                from application.shared.configuration.app_config import AppConfig
+                from datetime import datetime
+                config = AppConfig.from_env()
+                current_month = datetime.now().strftime("%Y-%m")
+                context_id = f"img_count_{user_id}_{current_month}"
+                current_count = self._facade._backend.context_service.load_context(context_id).get("count", 0)
+                
+                if current_count >= config.security.max_images_per_month:
+                    await message.reply_text(f"❌ عذراً، لقد تجاوزت الحد المسموح بإرسال الصور هذا الشهر ({config.security.max_images_per_month} صورة).")
+                    return
+                
+                self._facade._backend.context_service.save_context(context_id, "count", current_count + 1)
+                
                 message_text = message.caption or "صورة لقيم الراوتر"
                 try:
                     photo_file = await message.photo[-1].get_file()
@@ -273,6 +284,19 @@ class TelegramBot:
                 except Exception as e:
                     self._logger.error(f"Failed to download photo: {e}")
             elif message.voice or message.audio:
+                from application.shared.configuration.app_config import AppConfig
+                from datetime import datetime
+                config = AppConfig.from_env()
+                current_month = datetime.now().strftime("%Y-%m")
+                context_id = f"voice_count_{user_id}_{current_month}"
+                current_count = self._facade._backend.context_service.load_context(context_id).get("count", 0)
+                
+                if current_count >= config.security.max_voices_per_month:
+                    await message.reply_text(f"❌ عذراً، لقد تجاوزت الحد المسموح بالرسائل الصوتية هذا الشهر ({config.security.max_voices_per_month} مقطع).")
+                    return
+                    
+                self._facade._backend.context_service.save_context(context_id, "count", current_count + 1)
+
                 media = message.voice or message.audio
                 
                 # File size limit check (5 MB)
@@ -327,22 +351,61 @@ class TelegramBot:
                 # Send typing indicator
                 await message.chat.send_action("typing")
 
-                # Process through facade
-                response = await asyncio.to_thread(
-                    self._facade.handle_message, user_id, message_text, image_bytes, image_path
-                )
+                import random
+                import time
+                
+                queue = asyncio.Queue()
+                loop = asyncio.get_running_loop()
+                
+                def stream_callback(chunk):
+                    asyncio.run_coroutine_threadsafe(queue.put(chunk), loop)
+                    
+                task = asyncio.create_task(asyncio.to_thread(
+                    self._facade.handle_message, user_id, message_text, image_bytes, image_path, stream_callback
+                ))
+                
+                placeholder_msg = await message.reply_text("⏳...")
+                current_text = ""
+                last_update_time = time.time()
+                last_sent_text = ""
+                
+                while not task.done() or not queue.empty():
+                    try:
+                        chunk = await asyncio.wait_for(queue.get(), timeout=0.1)
+                        current_text += chunk
+                        
+                        # Throttle updates to avoid Rate Limits (every 1 second or 50 chars)
+                        time_since = time.time() - last_update_time
+                        if (time_since >= 1.0 or (len(current_text) - len(last_sent_text)) > 100) and current_text.strip():
+                            if current_text != last_sent_text:
+                                try:
+                                    await context.bot.edit_message_text(chat_id=message.chat_id, message_id=placeholder_msg.message_id, text=current_text + " ⏳")
+                                    last_update_time = time.time()
+                                    last_sent_text = current_text
+                                except Exception as e:
+                                    pass # ignore edit errors, usually rate limits
+                                
+                    except asyncio.TimeoutError:
+                        if task.done() and queue.empty():
+                            break
+                        continue
+                        
+                response = await task
+                
+                # Final update with the actual response and markdown
+                reply_markup_inline = None
+                reply_markup_regular = None
+                has_document = False
 
                 # Check if we need to request phone number
                 if response.intent == "request_phone_auth":
                     from telegram import ReplyKeyboardMarkup, KeyboardButton
                     contact_btn = KeyboardButton("📱 مشاركة رقم الهاتف", request_contact=True)
-                    reply_markup = ReplyKeyboardMarkup([[contact_btn]], one_time_keyboard=True, resize_keyboard=True)
-                    await message.reply_text(response.text, reply_markup=reply_markup)
+                    reply_markup_regular = ReplyKeyboardMarkup([[contact_btn]], one_time_keyboard=True, resize_keyboard=True)
                 else:
-                    from telegram import ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
+                    from telegram import InlineKeyboardMarkup, InlineKeyboardButton
                     
                     # Check for actions/buttons
-                    reply_markup = None
                     if getattr(response, "actions", []):
                         keyboard = []
                         for action in response.actions:
@@ -357,18 +420,34 @@ class TelegramBot:
                                     try:
                                         with open(doc_path, 'rb') as f:
                                             await message.reply_document(document=f)
+                                            has_document = True
                                     except Exception as e:
                                         self._logger.error(f"Failed to send document {doc_path}: {e}")
                                 else:
                                     self._logger.warning(f"Document not found at {doc_path}")
 
                         if keyboard:
-                            reply_markup = InlineKeyboardMarkup(keyboard)
-                    
-                    if reply_markup is None:
-                        reply_markup = ReplyKeyboardRemove()
-                        
-                    await message.reply_text(response.text, reply_markup=reply_markup)
+                            reply_markup_inline = InlineKeyboardMarkup(keyboard)
+
+                # Send or Edit the final message
+                if reply_markup_regular:
+                    # We must send a new message to show a ReplyKeyboardMarkup
+                    try:
+                        await context.bot.delete_message(chat_id=message.chat_id, message_id=placeholder_msg.message_id)
+                    except Exception:
+                        pass
+                    await message.reply_text(response.text, reply_markup=reply_markup_regular)
+                else:
+                    # Just edit the streaming placeholder to become the final message
+                    try:
+                        await context.bot.edit_message_text(
+                            chat_id=message.chat_id, 
+                            message_id=placeholder_msg.message_id, 
+                            text=response.text, 
+                            reply_markup=reply_markup_inline
+                        )
+                    except Exception as e:
+                        self._logger.warning(f"Final edit failed: {e}")
 
                 self._logger.info(
                     f"Replied to {user_id} | intent={response.intent} "

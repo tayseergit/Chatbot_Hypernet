@@ -30,6 +30,17 @@ class InferenceEngine:
         self._logger.debug(f"Inference complete ({len(result)} chars output)")
         return result
 
+    def infer_stream(self, prompt: str, options: Dict[str, Any] = None):
+        """Run streaming inference on a prompt and yield raw LLM output chunks."""
+        self._logger.debug(f"Running stream inference ({len(prompt)} chars prompt)")
+        if hasattr(self._provider, 'generate_stream'):
+            for chunk in self._provider.generate_stream(prompt, options):
+                yield chunk
+        else:
+            # Fallback for providers that don't support streaming yet
+            result = self._provider.generate(prompt, options)
+            yield result
+
     def health_check(self) -> bool:
         """Check if the LLM backend is available."""
         return self._provider.health_check()

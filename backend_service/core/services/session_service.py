@@ -52,3 +52,33 @@ class SessionService:
             db.commit()
         finally:
             db.close()
+
+    def rotate_session(self, user_id: str) -> SessionModel:
+        """Closes the current session and creates a new one, keeping the auth state."""
+        db = SessionLocal()
+        try:
+            old_session = db.query(SessionModel).filter(
+                SessionModel.user_id == user_id, 
+                SessionModel.is_active == True
+            ).first()
+            
+            if old_session:
+                old_session.is_active = False
+                
+                session_id = uuid.uuid4().hex
+                new_session = SessionModel(
+                    session_id=session_id, 
+                    user_id=user_id, 
+                    is_active=True, 
+                    authed=old_session.authed,
+                    auth_state=old_session.auth_state,
+                    customer_id=old_session.customer_id
+                )
+                db.add(new_session)
+                db.commit()
+                db.refresh(new_session)
+                return new_session
+            else:
+                return self.get_or_create_session(user_id)
+        finally:
+            db.close()

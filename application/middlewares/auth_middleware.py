@@ -16,8 +16,10 @@ class AuthMiddleware(BaseMiddleware):
             return None
 
         # Check if user is currently blocked due to too many failed attempts
-        context_data = self._backend.context_service.load_context(session.session_id)
-        blocked_until = context_data.get("auth_blocked_until")
+        # Rate limiting must be tied to the user_id, NOT the session_id
+        rate_limit_id = f"auth_rl_{session.user_id}"
+        rate_limit_context = self._backend.context_service.load_context(rate_limit_id)
+        blocked_until = rate_limit_context.get("auth_blocked_until")
         if blocked_until:
             from datetime import datetime
             blocked_until_dt = datetime.fromisoformat(blocked_until)
@@ -27,26 +29,27 @@ class AuthMiddleware(BaseMiddleware):
                 msg_text = f"لقد تجاوزت الحد الأقصى لمحاولات تسجيل الدخول. يرجى المحاولة مرة أخرى بعد {remaining} دقيقة."
                 return ChatResponse(session_id=session.session_id, text=msg_text, intent="auth_blocked", sources_used=["security"])
             else:
-                self._backend.context_service.delete_context(session.session_id, "auth_blocked_until")
+                self._backend.context_service.delete_context(rate_limit_id, "auth_blocked_until")
 
         # User is unauthenticated. Check what state they are in.
         
         # State: WAITING_FOR_PHONE
         if session.auth_state == "WAITING_FOR_PHONE":
-            # Extract all digits
-            digits_only = re.sub(r'\D', '', message_text) if message_text else ""
+            if message_text and message_text.startswith("VERIFIED_PHONE:"):
+                # Extract all digits from the verified phone string
+                digits_only = re.sub(r'\D', '', message_text.replace("VERIFIED_PHONE:", ""))
+                
+                if len(digits_only) >= 8:
+                    success = self._backend.authentication_service.authenticate_by_phone(digits_only, session.session_id)
+                    if success:
+                        return ChatResponse(session_id=session.session_id, text=get_message("auth_success"), intent="auth_success", sources_used=["crm"])
+                    else:
+                        # Phone failed, move to WAITING_FOR_USERNAME
+                        self._backend.session_service.update_session_state(session.session_id, "WAITING_FOR_USERNAME")
+                        return ChatResponse(session_id=session.session_id, text=get_message("auth_request_credentials"), intent="request_credentials", sources_used=["security"])
             
-            if len(digits_only) >= 8:
-                success = self._backend.authentication_service.authenticate_by_phone(digits_only, session.session_id)
-                if success:
-                    return ChatResponse(session_id=session.session_id, text=get_message("auth_success"), intent="auth_success", sources_used=["crm"])
-                else:
-                    # Phone failed, move to WAITING_FOR_USERNAME
-                    self._backend.session_service.update_session_state(session.session_id, "WAITING_FOR_USERNAME")
-                    return ChatResponse(session_id=session.session_id, text=get_message("auth_request_credentials"), intent="request_credentials", sources_used=["security"])
-            
-            # If they didn't send a phone number but we are waiting for one
-            return ChatResponse(session_id=session.session_id, text=get_message("auth_request_phone"), intent="request_phone_auth", sources_used=["security"])
+            # If they didn't send a verified phone number or sent plain text instead
+            return ChatResponse(session_id=session.session_id, text="يرجى مشاركة رقم هاتفك الحقيقي باستخدام الزر الموجود في الأسفل حصراً.", intent="request_phone_auth", sources_used=["security"])
 
         # State: WAITING_FOR_USERNAME
         if session.auth_state == "WAITING_FOR_USERNAME":
@@ -69,29 +72,32 @@ class AuthMiddleware(BaseMiddleware):
             # Retrieve the saved username and attempts
             context_data = self._backend.context_service.load_context(session.session_id)
             username = context_data.get("temp_auth_username", "")
-            attempts = context_data.get("auth_attempts", 0)
+            
+            rate_limit_id = f"auth_rl_{session.user_id}"
+            rate_limit_context = self._backend.context_service.load_context(rate_limit_id)
+            attempts = rate_limit_context.get("auth_attempts", 0)
             
             success = self._backend.authentication_service.authenticate_by_credentials(username, password, session.session_id)
             if success:
                 self._backend.context_service.delete_context(session.session_id, "temp_auth_username")
-                self._backend.context_service.delete_context(session.session_id, "auth_attempts")
-                self._backend.context_service.delete_context(session.session_id, "auth_blocked_until")
+                self._backend.context_service.delete_context(rate_limit_id, "auth_attempts")
+                self._backend.context_service.delete_context(rate_limit_id, "auth_blocked_until")
                 return ChatResponse(session_id=session.session_id, text=get_message("auth_success"), intent="auth_success", sources_used=["crm"])
             else:
                 attempts += 1
-                self._backend.context_service.save_context(session.session_id, "auth_attempts", attempts)
+                self._backend.context_service.save_context(rate_limit_id, "auth_attempts", attempts)
                 self._backend.context_service.delete_context(session.session_id, "temp_auth_username")
                 
                 if attempts >= 3:
                     from datetime import datetime, timedelta
                     blocked_until = (datetime.now() + timedelta(minutes=60)).isoformat()
-                    self._backend.context_service.save_context(session.session_id, "auth_blocked_until", blocked_until)
+                    self._backend.context_service.save_context(rate_limit_id, "auth_blocked_until", blocked_until)
                     self._backend.session_service.update_session_state(session.session_id, "WAITING_FOR_USERNAME")
                     
                     msg_text = f"بيانات الدخول غير صحيحة. لقد تجاوزت الحد الأقصى للمحاولات. يرجى الانتظار لمدة 60 دقيقة قبل المحاولة مرة أخرى."
                     return ChatResponse(session_id=session.session_id, text=msg_text, intent="auth_blocked", sources_used=["security"])
                 else:
-                    self._backend.context_service.save_context(session.session_id, "auth_attempts", attempts)
+                    self._backend.context_service.save_context(rate_limit_id, "auth_attempts", attempts)
                     self._backend.session_service.update_session_state(session.session_id, "WAITING_FOR_USERNAME")
                     
                     if attempts == 2:

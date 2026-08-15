@@ -110,6 +110,16 @@ class SessionConfig:
 
 
 @dataclass
+class SecurityConfig:
+    spam_max_calls_per_window: int = 10
+    spam_time_window_seconds: int = 20
+    spam_block_duration_minutes: int = 5
+    max_images_per_month: int = 15
+    max_voices_per_month: int = 50
+    max_messages_per_month: int = 200
+
+
+@dataclass
 class TelegramConfig:
     """Telegram bot configuration."""
 
@@ -149,6 +159,7 @@ class AppConfig:
     session: SessionConfig = field(default_factory=SessionConfig)
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
     monitoring: MonitoringConfig = field(default_factory=MonitoringConfig)
+    security: SecurityConfig = field(default_factory=SecurityConfig)
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -206,5 +217,13 @@ class AppConfig:
         config.monitoring.enable_tracing = (
             os.getenv("ENABLE_TRACING", "true").lower() == "true"
         )
+
+        # Security & Spam Limits
+        config.security.spam_max_calls_per_window = int(os.getenv("SPAM_MAX_CALLS", config.security.spam_max_calls_per_window))
+        config.security.spam_time_window_seconds = int(os.getenv("SPAM_WINDOW_SECONDS", config.security.spam_time_window_seconds))
+        config.security.spam_block_duration_minutes = int(os.getenv("SPAM_BLOCK_MINUTES", config.security.spam_block_duration_minutes))
+        config.security.max_images_per_month = int(os.getenv("MAX_IMAGES_PER_MONTH", config.security.max_images_per_month))
+        config.security.max_voices_per_month = int(os.getenv("MAX_VOICES_PER_MONTH", config.security.max_voices_per_month))
+        config.security.max_messages_per_month = int(os.getenv("MAX_MESSAGES_PER_MONTH", config.security.max_messages_per_month))
 
         return config
