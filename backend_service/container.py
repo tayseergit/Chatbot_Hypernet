@@ -7,6 +7,7 @@ from backend_service.core.services.message_service import MessageService
 from backend_service.core.services.context_service import ContextService
 from backend_service.core.services.authentication_service import AuthenticationService
 from backend_service.core.services.action_log_service import ActionLogService
+from backend_service.core.services.crm_log_service import CRMLogService
 from backend_service.core.services.permission_service import PermissionService
 from backend_service.tools.tool_executor import ToolExecutor
 
@@ -18,6 +19,7 @@ class BackendContainer:
         self.context_service = ContextService()
         self.authentication_service = AuthenticationService()
         self.action_log_service = ActionLogService()
+        self.crm_log_service = CRMLogService()
 
         # Permission service — single shared instance (owns the cache)
         self.permission_service = PermissionService()
@@ -29,5 +31,12 @@ class BackendContainer:
             import logging
             logging.getLogger("container").warning(f"Could not seed permissions: {e}")
 
-        # ToolExecutor receives permission_service for Layer 3 enforcement
-        self.tool_executor = ToolExecutor(permission_service=self.permission_service)
+        # Tools
+        from backend_service.crm.crm_client import CRMClient
+        self.crm_client = CRMClient()
+
+        # ToolExecutor receives permission_service for Layer 3 enforcement and crm_client
+        self.tool_executor = ToolExecutor(
+            permission_service=self.permission_service, 
+            crm_client=self.crm_client
+        )

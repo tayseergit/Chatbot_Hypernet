@@ -36,3 +36,4 @@ bot_output.log
 # OS
 .DS_Store
 Thumbs.db
+logs/

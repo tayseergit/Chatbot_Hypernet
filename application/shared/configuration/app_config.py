@@ -23,7 +23,7 @@ _config_data = load_config()
 
 try:
     from dotenv import load_dotenv
-    load_dotenv(BASE_DIR / ".env", override=True)
+    load_dotenv()
 except ImportError:
     pass
 
@@ -54,8 +54,8 @@ class RAGConfig:
 @dataclass
 class LLMConfig:
 
-    provider: str = "lmstudio"  
-    # provider: str = "gemini"  
+    # provider: str = "lmstudio"  
+    provider: str = "gemini"  
     # provider: str = "ollama"  
     use_for_intent: bool = True
     gemini_api_key: str = ""

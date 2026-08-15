@@ -147,13 +147,7 @@ VALUES (
     1, 'CRM_TOOL', 'MEDIUM'
 );
 
-INSERT INTO agent_permissions (tool_name, display_name, description, is_enabled, category, risk_level)
-VALUES (
-    'open_ticket',
-    'Open Support Ticket',
-    'Creates a new support ticket on behalf of the customer in the CRM system.',
-    1, 'CRM_TOOL', 'MEDIUM'
-);
+
 
 INSERT INTO agent_permissions (tool_name, display_name, description, is_enabled, category, risk_level)
 VALUES (

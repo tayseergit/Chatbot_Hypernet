@@ -106,7 +106,6 @@ INSERT INTO agent_permissions (tool_name, display_name, description, is_enabled,
 ('get_balance',          'Check Balance',             'Retrieves the customer account balance from CRM.',                                                1, 'CRM_TOOL', 'LOW'),
 ('get_current_package',  'Get Current Package',       'Fetches the customer active subscription package details.',                                       1, 'CRM_TOOL', 'LOW'),
 ('get_customer_info',    'Get Customer Info',         'Retrieves full customer profile and account information from CRM.',                               1, 'CRM_TOOL', 'MEDIUM'),
-('open_ticket',          'Open Support Ticket',       'Creates a new support ticket on behalf of the customer in the CRM system.',                      1, 'CRM_TOOL', 'MEDIUM'),
 ('check_extend_status',  'Check Bill Extension',      'Checks whether the customer is eligible for a bill extension.',                                   1, 'CRM_TOOL', 'MEDIUM'),
 ('get_available_packages','Get Available Packages',   'Lists all available upgrade or subscription packages for the customer.',                          1, 'CRM_TOOL', 'LOW'),
 ('check_phone_number',   'Verify Phone Number',       'Authenticates the customer by matching their phone number against the CRM records.',              1, 'CRM_TOOL', 'HIGH');

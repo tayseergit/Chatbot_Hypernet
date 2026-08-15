@@ -1,9 +1,5 @@
 """
-Tool Executor — connects CRM tools directly to the live HyperCRM API with Layer 3 Permission Guards.
-
-LAYER 3 ENFORCEMENT: Final hard guard before any HTTP call to CRM.
-Even if Layer 2 (WorkflowCoordinator) is bypassed somehow, this layer
-checks permissions again before sending any data to the CRM system.
+Tool Executor that communicates with the Hypernet CRM API.
 """
 import os
 import requests
@@ -13,16 +9,17 @@ from application.shared.exceptions.permission_exceptions import (
     PermissionDeniedException,
     AgentEmergencyStopException,
 )
-from backend_service.crm.crm_client import CRMClient
 
 logger = AppLogger.get_logger("tool_executor")
 CRM_BASE_URL = os.getenv("CRM_BASE_URL", "http://localhost:8090/api/crm")
 
+from application.shared.utils.tracer import trace_all_methods
 
+@trace_all_methods
 class ToolExecutor:
     def __init__(self, permission_service=None, crm_client=None):
         self._permission_svc = permission_service
-        self._crm_client = crm_client or CRMClient()
+        self._crm_client = crm_client
 
     def execute(self, tool_name: str, parameters: dict, session_id: str = None):
         # ── LAYER 3: Final hard check before ANY HTTP call ─────────────────
@@ -58,14 +55,14 @@ class ToolExecutor:
                     return {"success": False, "error": "CRMClient not configured"}
                     
                 # 1. Fetch from real CRM
-                response = self._crm_client.get_user_overview(str(customer_id))
+                response = self._crm_client.get_user_overview(customer_id)
                 
                 # 2. Apply business logic transformations to aid the LLM
                 if response.get("success") and "data" in response:
                     data = response["data"]
                     notes = []
                     
-                    user_profile_type = int(data.get("profile_type", 0))
+                    user_profile_type = int(data.get("profile_type"))
                     
                     rx_mb = 0.0
                     if "remaining_rx" in data and data["remaining_rx"] is not None:
@@ -90,9 +87,45 @@ class ToolExecutor:
                     profile_id = data.get("profile_id")
                     username = data.get("username")
                     
-                    if profile_id:
-                        prof_res = self._crm_client.get_profile(profile_id)
-                        if prof_res.get("success") and "data" in prof_res:
+                    # PARALLEL CRM FETCHING (Sync over threads)
+                    import concurrent.futures
+                    
+                    def fetch_profile():
+                        return self._crm_client.get_profile(profile_id) if profile_id else {}
+                    def fetch_search():
+                        return self._crm_client.search_users(username) if username else {}
+                    def fetch_rate():
+                        return self._crm_client.get_user_current_rate(customer_id)
+                    def fetch_invoices():
+                        return self._crm_client.get_user_invoices(customer_id)
+                    def fetch_packages():
+                        return self._crm_client.get_available_packages(customer_id)
+                    def fetch_iptv():
+                        iptv_type = data.get("iptv_type")
+                        if iptv_type and iptv_type != "none":
+                            return self._crm_client.get_iptv_expiration(customer_id)
+                        return {}
+                        
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
+                        f_profile = executor.submit(fetch_profile)
+                        f_search = executor.submit(fetch_search)
+                        f_rate = executor.submit(fetch_rate)
+                        f_iptv = executor.submit(fetch_iptv)
+                        
+                        f_invoices = None
+                        f_packages = None
+                        if tool_name == "get_available_packages" and user_profile_type != 4:
+                            f_invoices = executor.submit(fetch_invoices)
+                            f_packages = executor.submit(fetch_packages)
+                        
+                        prof_res = f_profile.result()
+                        search_res = f_search.result()
+                        rate_res = f_rate.result()
+                        iptv_res = f_iptv.result()
+                        inv_res = f_invoices.result() if f_invoices else None
+                        res_pkg = f_packages.result() if f_packages else None
+                    
+                    if prof_res and prof_res.get("success") and "data" in prof_res:
                             prof_data = prof_res.get("data", {}).get("data", {})
                             
                             # Add raw profile fields for context
@@ -145,25 +178,96 @@ class ToolExecutor:
                                             n_downrate = fmt_speed(n_data.get("downrate", 0))
                                             notes.append(f"حقيقة هامة: عند انتهاء باقة العميل الحالية (إذا استهلك كامل الحجم)، ستنخفض سرعته تلقائياً لتصبح {n_downrate} تحميل و {n_uprate} رفع.")
                                 
-                    if username:
-                        search_res = self._crm_client.search_users(username)
-                        if search_res.get("success") and "data" in search_res:
+                    if search_res and search_res.get("success") and "data" in search_res:
                             s_data = search_res.get("data", {})
                             if isinstance(s_data, dict) and s_data.get("data"):
-                                user_item = s_data["data"][0] if isinstance(s_data["data"], list) else s_data["data"]
-                                if isinstance(user_item, dict):
-                                    data["user_type"] = user_item.get("user_type")
-                                    data["profile_id"] = user_item.get("profile_id")
-                                    data["status"] = user_item.get("status")
-                                    data["freezed"] = user_item.get("freezed")
-                                    data["parent_id"] = user_item.get("parent_id")
-                                    data["iptv_type"] = user_item.get("iptv_type")
+                                s_data = s_data["data"]
+                                
+                            # Find exact user
+                            target_user = None
+                            if isinstance(s_data, list):
+                                for u in s_data:
+                                    if u.get("username") == username:
+                                        target_user = u
+                                        break
+                                        
+                            if target_user and "status" in target_user:
+                                stat = target_user["status"]
+                                is_traffic_ok = stat.get("traffic", True)
+                                is_online = stat.get("online", False)
+                                
+                                if not is_traffic_ok:
+                                    notes.append("حقيقة هامة: باقة العميل انتهت حالياً (استهلك كامل الحجم المخصص)، ولذلك سرعته مخفضة أو متوقفة.")
+                                    if 'original_speed_note' in locals():
+                                        notes.append(original_speed_note)
+                                else:
+                                    notes.append("حقيقة: باقة العميل لم تنتهِ وحجم الباقة لا يزال متاحاً للاستخدام.")
                                     
-                    # Try to fetch IPTV expiration if they are subscribed
+                                if is_online:
+                                    notes.append("حقيقة: الراوتر الخاص بالعميل متصل بالإنترنت حالياً (Online).")
+                                else:
+                                    notes.append("حقيقة: الراوتر الخاص بالعميل غير متصل بالإنترنت حالياً (Offline).")
+                                    
+                    # Router Live Rate (From Parallel Fetch)
+                    if rate_res and rate_res.get("success") and "data" in rate_res:
+                        r_data = rate_res.get("data", {})
+                        if isinstance(r_data, dict):
+                            actual_rate_data = r_data.get("data", r_data)
+                            if isinstance(actual_rate_data, dict) and "rate" in actual_rate_data:
+                                rate = actual_rate_data["rate"]
+                                notes.append(f"حقيقة هامة للتشخيص: السرعة الفعلية المسحوبة حالياً (اللحظية) من الراوتر هي: {rate}")
+                            
+                    # Freeze logic
+                    if data.get("freezed") == 1:
+                        notes.append("حقيقة هامة: حساب العميل مجمد حالياً (يحتاج للتواصل مع الدعم الفني لإعادة تفعيله).")
+                        
+                    # Account Status logic
+                    acc_status = data.get("status")
+                    if acc_status == 0:
+                        notes.append("حقيقة هامة: حساب العميل معطل حالياً (Disabled)، ويجب عليه التواصل مع الدعم الفني لإعادة تفعيله.")
+
+                    # Connection Type logic (user_type field)
+                    user_type = data.get("user_type")
+                    if user_type == 0:
+                        notes.append("حقيقة: نوع اشتراك العميل هو شبكة أرضية (ADSL).")
+                    elif user_type == 1:
+                        notes.append("حقيقة: نوع اشتراك العميل هو لاسلكي (WIFI Outdoor).")
+                        
+                    # Discount logic
+                    dt = data.get("discount_type")
+                    da = data.get("discount_amount")
+                    if dt and dt != "none":
+                        if dt == "all":
+                            notes.append("حقيقة: العميل لديه خصم كامل (مجاني) على فواتيره.")
+                        elif dt == "part":
+                            notes.append(f"حقيقة: العميل لديه خصم جزئي بقيمة {da} على فواتيره.")
+                            
+                    # MAC Binding logic
+                    cpe_mac = data.get("cpe_mac")
+                    if cpe_mac:
+                        notes.append(f"حقيقة هامة للتشخيص: حساب العميل مربوط بـ MAC Address محدد وهو ({cpe_mac}). إذا ذكر العميل أنه قام بتغيير الراوتر الخاص به براوتر جديد وهو لا يعمل بينما القديم يعمل، فهذا يعني أن المشكلة هي 'حماية الماك' ويجب عليه التواصل مع الدعم الفني لإلغاء ربط الماك القديم.")
+                            
+                    # Pending profile change
+                    hupc = data.get("has_unprocessed_profile_change")
+                    if hupc is not None:
+                        if hupc:
+                            notes.append("حقيقة: يوجد طلب تغيير سرعة أو باقة للعميل وهو قيد المعالجة حالياً.")
+                        else:
+                            notes.append("حقيقة: لا يوجد أي طلب تغيير سرعة أو باقة قيد المعالجة للعميل حالياً.")
+
+                    # IPTV Logic
                     iptv_type = data.get("iptv_type")
+                    iptv_pkg = data.get("iptv_package")
+                    if iptv_type == "none" or not iptv_type:
+                        notes.append("حقيقة: العميل غير مشترك بخدمة التلفزيون (IPTV) حالياً.")
+                    elif iptv_type == "pro":
+                        notes.append(f"حقيقة: العميل مشترك بخدمة التلفزيون IPTV (نسخة Pro) وباقته هي ({iptv_pkg}). إذا استفسر عن الروابط، زوده برابط تطبيق Hyper IPTV Pro: https://proiptv.io/login/")
+                    elif iptv_type == "like":
+                        notes.append(f"حقيقة: العميل مشترك بخدمة التلفزيون IPTV (نسخة Like) وباقته هي ({iptv_pkg}). إذا استفسر عن الروابط، زوده برابط تطبيق Hyper IPTV Like: https://likesyria.sy/login")
+
+                    # Try to fetch IPTV expiration if they are subscribed
                     if iptv_type and iptv_type != "none":
                         try:
-                            iptv_res = self._crm_client.get_iptv_expiration(customer_id)
                             if iptv_res.get("success") and "data" in iptv_res:
                                 iptv_data = iptv_res["data"]
                                 if isinstance(iptv_data, dict) and "data" in iptv_data:
@@ -174,7 +278,7 @@ class ToolExecutor:
                                         else:
                                             notes.append(f"حقيقة: تاريخ انتهاء اشتراك خدمة التلفزيون (IPTV) هو: {exp_date}")
                         except Exception as e:
-                            logger.error(f"Failed to fetch IPTV expiration: {e}")
+                            logger.error(f"Failed to process IPTV expiration: {e}")
 
                     if notes:
                         data["ai_business_logic_notes"] = notes
@@ -190,104 +294,140 @@ class ToolExecutor:
                         
                     # Only fetch and inject the packages if the requested tool is get_available_packages
                     if tool_name == "get_available_packages":
-                        user_balance = 0.0
-                        if "balance" in data:
-                            try:
-                                user_balance = float(data["balance"])
-                            except (ValueError, TypeError):
-                                pass
-
-                        used_loan_amount = 0.0
-                        inv_res = self._crm_client.get_user_invoices(customer_id)
-                        logger.info(f"Fetched invoices for {customer_id}: {inv_res}")
-                        if inv_res.get("success") and "data" in inv_res:
-                            inv_data_payload = inv_res["data"]
-                            inv_data = []
-                            if isinstance(inv_data_payload, dict):
-                                inv_data = inv_data_payload.get("data", [])
-                            elif isinstance(inv_data_payload, list):
-                                inv_data = inv_data_payload
-                            for inv in inv_data:
-                                if isinstance(inv, dict):
-                                    paid_val = inv.get("paid")
-                                    is_unpaid = (paid_val == 0 or paid_val == "0" or paid_val is False)
-                                    if inv.get("type") == "pkg_activation" and is_unpaid:
-                                        amt = 0.0
-                                        try:
-                                            amt = float(inv.get("amount", 0))
-                                        except (ValueError, TypeError):
-                                            amt = 0.0
-                                        used_loan_amount += amt
-                                        logger.info(f"Found unpaid loan invoice: {inv.get('id')} with amount {amt}")
-
-                        # 3. Fetch available packages from CRM with eligibility filtering
-                        packages_response = self._crm_client.get_available_packages(customer_id)
-                        if packages_response.get("success") and "data" in packages_response:
-                            all_pkgs = packages_response["data"].get("data", [])
-                            
-                            # Filter packages and build interactive buttons
-                            eligible_pkgs = []
-                            for pkg in all_pkgs:
+                        if 'user_profile_type' in locals() and user_profile_type == 4:
+                            notes.append("تنبيه هام جداً: العميل يمتلك باقة غير محدودة (Unlimited)، لذلك يمنع منعاً باتاً تفعيل أي باقات إضافية له.")
+                            data["ai_business_logic_notes"] = notes
+                            data["available_topup_packages"] = []
+                        else:
+                            user_balance = 0.0
+                            if "balance" in data:
                                 try:
-                                    price = float(pkg.get("price", 0))
+                                    user_balance = float(data["balance"])
                                 except (ValueError, TypeError):
-                                    price = 0.0
-                                    
-                                pkg_id = pkg.get("id")
-                                
-                                # Business Rule: Balance must cover Package Price + Unpaid Loans
-                                if user_balance >= (price + used_loan_amount):
-                                    pkg["can_buy"] = True
-                                    pkg["action_button"] = f'[ACTION_BUTTON: {{"text": "تفعيل باقة {pkg.get("name")}", "callback_data": "req_activate_pkg_{pkg_id}"}}]'
-                                else:
-                                    pkg["can_buy"] = False
-                                    pkg["action_button"] = None
-                                    
-                                eligible_pkgs.append(pkg)
-                                
-                            data["available_packages"] = eligible_pkgs
-                            if "ai_business_logic_notes" not in data:
-                                data["ai_business_logic_notes"] = []
-                            data["ai_business_logic_notes"].append(
-                                "حقيقة هامة: في حال رغبة العميل بتفعيل باقة وهو يمتلك رصيداً كافياً، يجب عليك استخدام صيغة الزر المرفق (ACTION_BUTTON) أسفل رسالتك لتمكينه من التفعيل بنقرة واحدة."
-                            )
+                                    pass
 
-                    return {"success": True, "data": data}
-                    
+                            used_loan_amount = 0.0
+                            logger.info(f"Fetched invoices for {customer_id}: {inv_res}")
+                            if inv_res.get("success") and "data" in inv_res:
+                                inv_data_payload = inv_res["data"]
+                                inv_data = []
+                                if isinstance(inv_data_payload, dict):
+                                    inv_data = inv_data_payload.get("data", [])
+                                elif isinstance(inv_data_payload, list):
+                                    inv_data = inv_data_payload
+                                for inv in inv_data:
+                                    if isinstance(inv, dict):
+                                        paid_val = inv.get("paid")
+                                        is_unpaid = (paid_val == 0 or paid_val == "0" or paid_val is False)
+                                        if inv.get("type") == "pkg_activation" and is_unpaid:
+                                            amt = 0.0
+                                            try:
+                                                amt = float(inv.get("amount", inv.get("total", 0)))
+                                            except:
+                                                pass
+                                            used_loan_amount += amt
+
+                            if res_pkg and res_pkg.get("success") and "data" in res_pkg:
+                                api_json = res_pkg["data"]
+                                if isinstance(api_json, dict) and "data" in api_json:
+                                    packages = api_json["data"]
+                                    if isinstance(packages, list):
+                                        filtered_packages = []
+                                        for p in packages:
+                                            if p.get("enabled"):
+                                                quota_mb_str = p.get("quota_mb", "0")
+                                                try:
+                                                    quota_gb = float(quota_mb_str) / 1024
+                                                except ValueError:
+                                                    quota_gb = 0
+                                                    
+                                                pkg_price = 0.0
+                                                try:
+                                                    pkg_price = float(p.get("price", 0))
+                                                except ValueError:
+                                                    pass
+
+                                                pkg_id = p.get("id")
+                                                pkg_name = p.get("name", "")
+                                                
+                                                can_activate = False
+                                                loan_note = ""
+                                                if user_balance >= pkg_price:
+                                                    can_activate = True
+                                                else:
+                                                    if (used_loan_amount + pkg_price) <= 50:
+                                                        can_activate = True
+                                                        loan_note = " (ستتم إضافة التكلفة كسلفة على الفاتورة القادمة)"
+                                                
+                                                if can_activate:
+                                                    filtered_packages.append({
+                                                        "name": pkg_name + loan_note,
+                                                        "quota_gb": f"{quota_gb:g} GB",
+                                                        "price": p.get("price")
+                                                    })
+                                                    notes.append(f'[ACTION_BUTTON: {{"text": "تفعيل {pkg_name}", "callback_data": "req_activate_pkg_{pkg_id}"}}]')
+                                                else:
+                                                    filtered_packages.append({
+                                                        "name": pkg_name + " (الرصيد غير كافٍ)",
+                                                        "quota_gb": f"{quota_gb:g} GB",
+                                                        "price": p.get("price")
+                                                    })
+                                                    
+                                        data["available_topup_packages"] = filtered_packages
+                                        
+                            if notes:
+                                data["ai_business_logic_notes"] = notes
+                        
                 return response
                 
-            elif tool_name == "troubleshoot_slow_internet" or tool_name == "dsl_line_values":
+            elif tool_name == "get_troubleshooting_data":
                 if not customer_id:
                     return {"success": False, "error": "Customer ID required"}
                 if not self._crm_client:
                     return {"success": False, "error": "CRMClient not configured"}
                     
-                # 1. Fetch user overview for profile and status
+                # 1. Fetch overview
                 overview = self._crm_client.get_user_overview(customer_id)
-                data = {}
-                if overview.get("success") and "data" in overview:
-                    data = overview["data"]
-                    
-                # 2. Fetch live online/offline status
-                status_res = self._crm_client.get_user_status(customer_id)
-                if status_res.get("success") and "data" in status_res:
-                    data["online_status"] = status_res["data"]
-                    
-                # 3. Fetch recent session logs
-                try:
-                    sessions = self._crm_client.get_user_sessions(customer_id, limit=5)
-                    if sessions.get("success") and "data" in sessions:
-                        data["recent_sessions"] = sessions.get("data", {}).get("data", [])
-                except Exception as e:
-                    logger.warning(f"Failed to fetch sessions: {e}")
-                    
-                # 4. Include profile details for speed comparison
+                data = overview.get("data", {}) if overview.get("success") else {}
+                
+                # 2. Fetch rate, sessions, profile in parallel
                 profile_id = data.get("profile_id")
-                if profile_id:
-                    prof_res = self._crm_client.get_profile(profile_id)
-                    if prof_res.get("success") and "data" in prof_res:
-                        prof_data = prof_res.get("data", {}).get("data", {})
-                        data["profile_details"] = prof_data
+                
+                import concurrent.futures
+                
+                def fetch_rate():
+                    return self._crm_client.get_user_current_rate(customer_id)
+                def fetch_sessions():
+                    return self._crm_client.get_user_sessions(customer_id, limit=5)
+                def fetch_profile():
+                    return self._crm_client.get_profile(profile_id) if profile_id else {}
+                
+                with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+                    f_rate = executor.submit(fetch_rate)
+                    f_sessions = executor.submit(fetch_sessions)
+                    f_profile = executor.submit(fetch_profile)
+                    
+                    try:
+                        rate = f_rate.result()
+                        if rate.get("success"):
+                            data["current_rate"] = rate.get("data")
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch rate: {e}")
+                        
+                    try:
+                        sessions = f_sessions.result()
+                        if sessions.get("success"):
+                            data["recent_sessions"] = sessions.get("data", {}).get("data", [])
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch sessions: {e}")
+                        
+                    try:
+                        prof_res = f_profile.result()
+                        if prof_res.get("success") and "data" in prof_res:
+                            prof_data = prof_res.get("data", {}).get("data", {})
+                            data["profile_details"] = prof_data
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch profile: {e}")
 
                 # 5. Provide Action Button for Disconnect and Connection Type
                 conn_type_note = "ADSL" if "ADSL" in str(data.get("profile_name", "")).upper() else "Wi-Fi/Microwave"
@@ -298,12 +438,6 @@ class ToolExecutor:
                 ]
                 
                 return {"success": True, "data": data}
-                
-            elif tool_name == "open_ticket":
-                if not self._crm_client:
-                    return {"success": False, "error": "CRMClient not configured"}
-                url = f"{self._crm_client._auth_manager._base_url}/tickets"
-                return self._crm_client.post(url, parameters)
                 
             elif tool_name == "check_extend_status":
                 if not customer_id:
@@ -377,14 +511,64 @@ class ToolExecutor:
                     return {"success": False, "error": "CRMClient not configured"}
                 limit = parameters.get("limit", 30)
                 return self._crm_client.get_user_sessions(customer_id, limit)
-
+            elif tool_name == "get_invoice_amount":
+                username = parameters.get("username")
+                if not username:
+                    return {"success": False, "error": "Username required for invoice amount"}
+                if not self._crm_client:
+                    return {"success": False, "error": "CRMClient not configured"}
+                
+                response = self._crm_client.get_invoice_amount(username)
+                
+                # Add AI business logic notes to help the LLM interpret the invoice
+                if response.get("success") and "data" in response:
+                    data = response["data"]
+                    notes = []
+                    notes.append("حقيقة: هذه تفاصيل فاتورة العميل بناءً على رصيده والخدمات المفعلة.")
+                    
+                    if data.get("is_overdue"):
+                        notes.append("حقيقة هامة جداً: الفاتورة (مستحقة الدفع حالياً overdue). يجب على العميل دفعها لكي لا تنقطع الخدمة أو لكي يتم تفعيلها.")
+                    else:
+                        notes.append("حقيقة هامة جداً: الفاتورة (غير مستحقة حالياً incoming). هذا المبلغ هو ما سيدفعه العميل في الدورة القادمة أو عند التجديد القادم، وقد يتغير.")
+                    
+                    notes.append(f"إجمالي المبلغ قبل أي خصم (total_amount): {data.get('total_amount')} ل.س")
+                    
+                    if "discount_amount" in data and data.get("discount_amount") != 0:
+                        dt = data.get('discount_type', 'none')
+                        dt_arabic = "لا يوجد"
+                        if dt == "all":
+                            dt_arabic = "خصم كامل (مجاني)"
+                        elif dt == "part":
+                            dt_arabic = "خصم جزئي"
+                            
+                        notes.append(f"نوع الخصم: {dt_arabic}")
+                        notes.append(f"قيمة الخصم: {abs(data.get('discount_amount', 0))} ل.س")
+                        
+                    notes.append(f"القيمة النهائية المطلوب دفعها (بعد الخصم) (final_amount): {data.get('final_amount')} ل.س")
+                    
+                    if data.get("adsl_service_amount", 0) > 0:
+                        notes.append(f"ملاحظة: هذا يتضمن اشتراك الإنترنت (ADSL) بقيمة {data.get('adsl_service_amount')} ل.س لمدة {data.get('adsl_monthes')} شهر.")
+                        
+                    if data.get("iptv_service_amount", 0) > 0:
+                        notes.append(f"ملاحظة: هذا يتضمن اشتراك التلفزيون (IPTV) بقيمة {data.get('iptv_service_amount')} ل.س.")
+                    
+                    if data.get("packages_amount", 0) > 0:
+                        notes.append(f"ملاحظة: يوجد ديون باقات مفعلة لم يتم دفعها بقيمة {data.get('packages_amount')} ل.س.")
+                    
+                    if data.get("days_extends_amount", 0) > 0:
+                        notes.append(f"ملاحظة: يوجد مبلغ {data.get('days_extends_amount')} ل.س تكلفة أيام التمديد (لـ {data.get('total_extends')} أيام).")
+                        
+                    data["ai_business_logic_notes"] = notes
+                
+                return response
+                
             elif tool_name == "get_invoices":
                 if not customer_id:
                     return {"success": False, "error": "Customer ID required"}
                 if not self._crm_client:
                     return {"success": False, "error": "CRMClient not configured"}
                 return self._crm_client.get_user_invoices(customer_id)
-
+                
             elif tool_name == "extend_bill":
                 username = parameters.get("username")
                 if not username:
@@ -394,8 +578,8 @@ class ToolExecutor:
                 return self._crm_client.extend_user_bill(username)
                 
             else:
-                return {"success": False, "error": f"Tool '{tool_name}' is not implemented in ToolExecutor."}
-
+                return {"success": False, "error": f"Tool {tool_name} is not implemented yet in ToolExecutor."}
+                
         except (PermissionDeniedException, AgentEmergencyStopException):
             raise  # never swallow permission errors
         except requests.RequestException as e:

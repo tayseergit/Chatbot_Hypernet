@@ -84,14 +84,6 @@ DEFAULT_PERMISSIONS = [
         "risk_level": "MEDIUM",
     },
     {
-        "tool_name": "open_ticket",
-        "display_name": "Open / Create Support Ticket",
-        "description": "Creates a new support ticket in the CRM on behalf of a customer. WRITE operation.",
-        "is_enabled": True,
-        "category": "CRM_TOOL",
-        "risk_level": "HIGH",
-    },
-    {
         "tool_name": "check_phone_number",
         "display_name": "Check Phone Number (Auth)",
         "description": "Verifies a customer's phone number against CRM records for authentication.",
