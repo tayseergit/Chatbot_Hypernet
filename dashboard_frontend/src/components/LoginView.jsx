@@ -1,21 +1,10 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import {
-  Lock,
-  User,
-  Eye,
-  EyeOff,
-  ShieldCheck,
-  KeyRound,
-  AlertTriangle,
-  Wifi,
-  Sparkles,
-  Timer,
-} from 'lucide-react';
+import { Eye, EyeOff, AlertTriangle } from 'lucide-react';
 
 export default function LoginView() {
   const { login } = useAuth();
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -43,7 +32,7 @@ export default function LoginView() {
     try {
       await login(username.trim(), password);
     } catch (err) {
-      setErrorMsg(err.message || 'فشل تسجيل الدخول. يرجى التحقق من البيانات والمحاولة مجدداً.');
+      setErrorMsg(err.message || 'فشل تسجيل الدخول. يرجى التحقق من البيانات.');
     } finally {
       setIsLoading(false);
     }
@@ -51,382 +40,421 @@ export default function LoginView() {
 
   return (
     <div
-      dir="rtl"
       style={{
         minHeight: '100vh',
         width: '100%',
+        backgroundColor: '#ffffff',
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'radial-gradient(circle at 50% 20%, #172439 0%, #0d1522 100%)',
-        padding: '20px',
         position: 'relative',
         overflow: 'hidden',
-        fontFamily: "'Cairo', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
+        fontFamily: "'Inter', 'Cairo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
       }}
     >
-      {/* Background ambient lighting effects */}
+      {/* Top Right: Official Hypernet Brand Logo */}
       <div
         style={{
           position: 'absolute',
-          top: '-150px',
-          right: '20%',
-          width: '500px',
-          height: '500px',
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(0, 167, 111, 0.15) 0%, transparent 70%)',
-          pointerEvents: 'none',
+          top: '32px',
+          right: '48px',
+          zIndex: 20,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '2px',
         }}
-      />
-      <div
-        style={{
-          position: 'absolute',
-          bottom: '-150px',
-          left: '20%',
-          width: '500px',
-          height: '500px',
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(56, 189, 248, 0.12) 0%, transparent 70%)',
-          pointerEvents: 'none',
-        }}
-      />
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span
+            style={{
+              fontSize: '28px',
+              fontWeight: 900,
+              letterSpacing: '2px',
+              color: '#009b4d',
+              fontFamily: "'Arial Black', 'Inter', sans-serif",
+              lineHeight: 1,
+            }}
+          >
+            HЧPER
+          </span>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            {/* Wifi Wave icon */}
+            <svg width="24" height="18" viewBox="0 0 24 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M12 15C12.8284 15 13.5 14.3284 13.5 13.5C13.5 12.6716 12.8284 12 12 12C11.1716 12 10.5 12.6716 10.5 13.5C10.5 14.3284 11.1716 15 12 15Z"
+                fill="#009b4d"
+              />
+              <path
+                d="M7.05 9.05C9.78 6.32 14.22 6.32 16.95 9.05"
+                stroke="#009b4d"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+              />
+              <path
+                d="M3.5 5.5C8.2 0.8 15.8 0.8 20.5 5.5"
+                stroke="#009b4d"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+              />
+            </svg>
+            <span
+              style={{
+                fontSize: '28px',
+                fontWeight: 900,
+                letterSpacing: '2px',
+                color: '#009b4d',
+                fontFamily: "'Arial Black', 'Inter', sans-serif",
+                lineHeight: 1,
+                marginTop: '-2px',
+              }}
+            >
+              ПET
+            </span>
+          </div>
+        </div>
+        <span
+          style={{
+            fontSize: '11px',
+            fontWeight: 700,
+            color: '#009b4d',
+            letterSpacing: '0.5px',
+            fontFamily: "'Cairo', sans-serif",
+          }}
+        >
+          مزود خدمة الإنترنت
+        </span>
+      </div>
 
-      {/* Login Card */}
+      {/* Main 2-Column Container */}
       <div
         style={{
           width: '100%',
-          maxWidth: '460px',
-          background: 'rgba(23, 33, 49, 0.85)',
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          borderRadius: '24px',
-          boxShadow: '0 30px 60px -12px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.05)',
-          padding: '40px 36px',
-          position: 'relative',
-          zIndex: 10,
+          display: 'flex',
+          flexDirection: 'row',
+          minHeight: '100vh',
         }}
       >
-        {/* Brand Header */}
-        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <div
-            style={{
-              width: '64px',
-              height: '64px',
-              borderRadius: '18px',
-              background: 'linear-gradient(135deg, #00A76F 0%, #007850 100%)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 12px 24px -6px rgba(0, 167, 111, 0.45)',
-              marginBottom: '16px',
-            }}
-          >
-            <Wifi size={32} color="#ffffff" strokeWidth={2.5} />
-          </div>
-
-          <h1
-            style={{
-              fontSize: '24px',
-              fontWeight: 800,
-              color: '#ffffff',
-              margin: '0 0 6px 0',
-              letterSpacing: '-0.5px',
-            }}
-          >
-            هايبرنت — بوابة الإدارة المركزية
-          </h1>
-          <p
-            style={{
-              fontSize: '13px',
-              color: '#94a3b8',
-              margin: 0,
-              fontWeight: 500,
-            }}
-          >
-            تسجيل دخول آمن ومشفّر لمسؤولي النظام ومراقبة المساعد الذكي
-          </p>
-        </div>
-
-        {/* Error Alert */}
-        {errorMsg && (
-          <div
-            style={{
-              background: 'rgba(239, 68, 68, 0.12)',
-              border: '1px solid rgba(239, 68, 68, 0.35)',
-              borderRadius: '12px',
-              padding: '12px 16px',
-              marginBottom: '24px',
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: '12px',
-              color: '#f87171',
-              fontSize: '13px',
-              fontWeight: 600,
-              lineHeight: 1.5,
-              animation: 'shake 0.4s ease-in-out',
-            }}
-          >
-            <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
-            <div style={{ flex: 1 }}>{errorMsg}</div>
-          </div>
-        )}
-
-        {/* Form */}
-        <form onSubmit={handleSubmit}>
-          {/* Username Input */}
-          <div style={{ marginBottom: '20px' }}>
-            <label
-              style={{
-                display: 'block',
-                fontSize: '13px',
-                fontWeight: 600,
-                color: '#cbd5e1',
-                marginBottom: '8px',
-                textAlign: 'right',
-              }}
-            >
-              اسم المستخدم
-            </label>
-            <div style={{ position: 'relative' }}>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="أدخل اسم المستخدم..."
-                disabled={isLoading}
-                autoFocus
-                style={{
-                  width: '100%',
-                  padding: '13px 44px 13px 16px',
-                  borderRadius: '12px',
-                  background: 'rgba(15, 23, 42, 0.65)',
-                  border: '1px solid rgba(148, 163, 184, 0.2)',
-                  color: '#ffffff',
-                  fontSize: '14px',
-                  fontFamily: 'inherit',
-                  outline: 'none',
-                  transition: 'all 0.2s',
-                  boxSizing: 'border-box',
-                }}
-                onFocus={(e) => {
-                  e.target.style.borderColor = '#00A76F';
-                  e.target.style.boxShadow = '0 0 0 3px rgba(0, 167, 111, 0.15)';
-                }}
-                onBlur={(e) => {
-                  e.target.style.borderColor = 'rgba(148, 163, 184, 0.2)';
-                  e.target.style.boxShadow = 'none';
-                }}
-              />
-              <User
-                size={18}
-                color="#64748b"
-                style={{
-                  position: 'absolute',
-                  right: '14px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  pointerEvents: 'none',
-                }}
-              />
-            </div>
-          </div>
-
-          {/* Password Input */}
-          <div style={{ marginBottom: '24px' }}>
-            <label
-              style={{
-                display: 'block',
-                fontSize: '13px',
-                fontWeight: 600,
-                color: '#cbd5e1',
-                marginBottom: '8px',
-                textAlign: 'right',
-              }}
-            >
-              كلمة المرور
-            </label>
-            <div style={{ position: 'relative' }}>
-              <input
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={handleKeyDown}
-                onKeyUp={handleKeyDown}
-                placeholder="••••••••••••"
-                disabled={isLoading}
-                style={{
-                  width: '100%',
-                  padding: '13px 44px 13px 44px',
-                  borderRadius: '12px',
-                  background: 'rgba(15, 23, 42, 0.65)',
-                  border: '1px solid rgba(148, 163, 184, 0.2)',
-                  color: '#ffffff',
-                  fontSize: '14px',
-                  fontFamily: 'inherit',
-                  outline: 'none',
-                  transition: 'all 0.2s',
-                  boxSizing: 'border-box',
-                }}
-                onFocus={(e) => {
-                  e.target.style.borderColor = '#00A76F';
-                  e.target.style.boxShadow = '0 0 0 3px rgba(0, 167, 111, 0.15)';
-                }}
-                onBlur={(e) => {
-                  e.target.style.borderColor = 'rgba(148, 163, 184, 0.2)';
-                  e.target.style.boxShadow = 'none';
-                }}
-              />
-              <KeyRound
-                size={18}
-                color="#64748b"
-                style={{
-                  position: 'absolute',
-                  right: '14px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  pointerEvents: 'none',
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                tabIndex={-1}
-                style={{
-                  position: 'absolute',
-                  left: '14px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: '#94a3b8',
-                  padding: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                }}
-              >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-
-            {/* Caps lock warning */}
-            {isCapsLock && (
-              <div
-                style={{
-                  color: '#f59e0b',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  marginTop: '6px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-              >
-                <AlertTriangle size={13} /> زر Caps Lock مفعّل
-              </div>
-            )}
-          </div>
-
-          {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={isLoading}
-            style={{
-              width: '100%',
-              padding: '14px',
-              borderRadius: '12px',
-              background: 'linear-gradient(135deg, #00A76F 0%, #007850 100%)',
-              color: '#ffffff',
-              border: 'none',
-              fontSize: '15px',
-              fontWeight: 700,
-              fontFamily: 'inherit',
-              cursor: isLoading ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '10px',
-              boxShadow: '0 8px 20px -4px rgba(0, 167, 111, 0.4)',
-              transition: 'all 0.2s',
-              opacity: isLoading ? 0.75 : 1,
-            }}
-            onMouseEnter={(e) => {
-              if (!isLoading) e.currentTarget.style.transform = 'translateY(-1px)';
-            }}
-            onMouseLeave={(e) => {
-              if (!isLoading) e.currentTarget.style.transform = 'translateY(0)';
-            }}
-          >
-            {isLoading ? (
-              <>
-                <span
-                  style={{
-                    width: '18px',
-                    height: '18px',
-                    border: '2px solid rgba(255, 255, 255, 0.3)',
-                    borderTopColor: '#ffffff',
-                    borderRadius: '50%',
-                    display: 'inline-block',
-                    animation: 'spin 0.8s linear infinite',
-                  }}
-                />
-                جاري التحقق والمصادقة...
-              </>
-            ) : (
-              <>
-                <Lock size={18} strokeWidth={2.5} />
-                تسجيل الدخول إلى النظام
-              </>
-            )}
-          </button>
-        </form>
-
-        {/* Security Footprint & Badges */}
+        {/* Left Column: Sign In Form */}
         <div
           style={{
-            marginTop: '32px',
-            paddingTop: '20px',
-            borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+            flex: '0 0 45%',
+            minWidth: '360px',
             display: 'flex',
             flexDirection: 'column',
-            gap: '10px',
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: '40px 48px',
+            position: 'relative',
+            zIndex: 10,
           }}
         >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-              color: '#34d399',
-              fontSize: '12px',
-              fontWeight: 600,
-            }}
-          >
-            <ShieldCheck size={16} />
-            <span>نظام وصول مؤسسي محمي ومشفّر بالكامل (Bcrypt + JWT)</span>
+          <div style={{ width: '100%', maxWidth: '340px' }}>
+            {/* Title */}
+            <h1
+              style={{
+                fontSize: '22px',
+                fontWeight: 700,
+                color: '#1e293b',
+                textAlign: 'center',
+                marginBottom: '32px',
+                letterSpacing: '-0.3px',
+              }}
+            >
+              Sign in to Hyper CRM
+            </h1>
+
+            {/* Error Notification */}
+            {errorMsg && (
+              <div
+                style={{
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  borderRadius: '8px',
+                  padding: '10px 14px',
+                  marginBottom: '20px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  color: '#dc2626',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  animation: 'shake 0.3s ease',
+                }}
+              >
+                <AlertTriangle size={16} style={{ flexShrink: 0 }} />
+                <span>{errorMsg}</span>
+              </div>
+            )}
+
+            {/* Login Form */}
+            <form onSubmit={handleSubmit}>
+              {/* Username Input with top-right floating label */}
+              <div style={{ marginBottom: '16px', position: 'relative' }}>
+                <div
+                  style={{
+                    backgroundColor: '#eaf1fa',
+                    borderRadius: '8px',
+                    padding: '6px 14px 8px 14px',
+                    border: '1px solid transparent',
+                    transition: 'all 0.2s ease',
+                  }}
+                  onFocus={(e) => (e.currentTarget.style.borderColor = '#93c5fd')}
+                  onBlur={(e) => (e.currentTarget.style.borderColor = 'transparent')}
+                >
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '10px',
+                      color: '#94a3b8',
+                      fontWeight: 500,
+                      textAlign: 'right',
+                      marginBottom: '2px',
+                      userSelect: 'none',
+                    }}
+                  >
+                    Username
+                  </label>
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    disabled={isLoading}
+                    autoFocus
+                    placeholder="Enter username"
+                    style={{
+                      width: '100%',
+                      background: 'transparent',
+                      border: 'none',
+                      outline: 'none',
+                      fontSize: '14px',
+                      fontWeight: 500,
+                      color: '#1e293b',
+                      textAlign: 'center',
+                      fontFamily: 'inherit',
+                      padding: 0,
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Password Input with top-right floating label & left toggle icon */}
+              <div style={{ marginBottom: '24px', position: 'relative' }}>
+                <div
+                  style={{
+                    backgroundColor: '#eaf1fa',
+                    borderRadius: '8px',
+                    padding: '6px 14px 8px 14px',
+                    border: '1px solid transparent',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    position: 'relative',
+                    transition: 'all 0.2s ease',
+                  }}
+                  onFocus={(e) => (e.currentTarget.style.borderColor = '#93c5fd')}
+                  onBlur={(e) => (e.currentTarget.style.borderColor = 'transparent')}
+                >
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '10px',
+                      color: '#94a3b8',
+                      fontWeight: 500,
+                      textAlign: 'right',
+                      marginBottom: '2px',
+                      userSelect: 'none',
+                    }}
+                  >
+                    Password
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    {/* Left Eye Toggle Icon */}
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      tabIndex={-1}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: 0,
+                        marginRight: '8px',
+                        color: '#94a3b8',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'color 0.2s',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = '#475569')}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
+                    >
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      onKeyUp={handleKeyDown}
+                      disabled={isLoading}
+                      placeholder="••••••••••"
+                      style={{
+                        width: '100%',
+                        background: 'transparent',
+                        border: 'none',
+                        outline: 'none',
+                        fontSize: '14px',
+                        fontWeight: 500,
+                        color: '#1e293b',
+                        textAlign: 'center',
+                        letterSpacing: showPassword ? 'normal' : '2px',
+                        fontFamily: 'inherit',
+                        padding: 0,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Caps Lock Alert */}
+                {isCapsLock && (
+                  <div
+                    style={{
+                      color: '#d97706',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      marginTop: '6px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <AlertTriangle size={12} /> Caps Lock is ON
+                  </div>
+                )}
+              </div>
+
+              {/* Login Button */}
+              <button
+                type="submit"
+                disabled={isLoading}
+                style={{
+                  width: '100%',
+                  height: '44px',
+                  backgroundColor: '#1b2533',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  fontFamily: 'inherit',
+                  cursor: isLoading ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  transition: 'background-color 0.2s, transform 0.1s',
+                  boxShadow: '0 2px 8px rgba(27, 37, 51, 0.18)',
+                  opacity: isLoading ? 0.8 : 1,
+                }}
+                onMouseEnter={(e) => {
+                  if (!isLoading) e.currentTarget.style.backgroundColor = '#0f172a';
+                }}
+                onMouseLeave={(e) => {
+                  if (!isLoading) e.currentTarget.style.backgroundColor = '#1b2533';
+                }}
+              >
+                {isLoading ? (
+                  <>
+                    <span
+                      style={{
+                        width: '16px',
+                        height: '16px',
+                        border: '2px solid rgba(255, 255, 255, 0.3)',
+                        borderTopColor: '#ffffff',
+                        borderRadius: '50%',
+                        display: 'inline-block',
+                        animation: 'spin 0.8s linear infinite',
+                      }}
+                    />
+                    <span>Signing in...</span>
+                  </>
+                ) : (
+                  <span>Login</span>
+                )}
+              </button>
+            </form>
           </div>
 
+          {/* Bottom Left: Assistant Floating Widget */}
           <div
             style={{
+              position: 'fixed',
+              bottom: '24px',
+              left: '24px',
+              width: '46px',
+              height: '46px',
+              borderRadius: '50%',
+              backgroundColor: '#ffffff',
+              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0,0,0,0.08)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '16px',
-              color: '#94a3b8',
-              fontSize: '11px',
-              fontWeight: 500,
+              cursor: 'pointer',
+              transition: 'transform 0.2s, box-shadow 0.2s',
+              zIndex: 30,
             }}
+            title="Hypernet AI Support"
+            onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.08)')}
+            onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
           >
-            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Timer size={13} /> جلسات آمنة مؤقتة (60 دقيقة)
-            </span>
-            <span>•</span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Sparkles size={13} /> قفل تلقائي عند التخمين
-            </span>
+            {/* 4 Colored Dots / Assistant Icon */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#4285F4' }} />
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#EA4335' }} />
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#FBBC05' }} />
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#34A853' }} />
+            </div>
           </div>
+        </div>
+
+        {/* Right Column: 3D Illustration Area */}
+        <div
+          style={{
+            flex: '1 1 55%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '40px',
+            position: 'relative',
+          }}
+        >
+          {/* Subtle Ambient Background Gradient */}
+          <div
+            style={{
+              position: 'absolute',
+              width: '450px',
+              height: '450px',
+              borderRadius: '50%',
+              background: 'radial-gradient(circle, rgba(234, 241, 250, 0.8) 0%, rgba(255, 255, 255, 0) 70%)',
+              pointerEvents: 'none',
+            }}
+          />
+
+          {/* 3D Dashboard Claymorphism Render */}
+          <img
+            src="/login_illustration.jpg"
+            alt="Hypernet CRM Analytics Illustration"
+            style={{
+              maxWidth: '560px',
+              width: '100%',
+              height: 'auto',
+              objectFit: 'contain',
+              position: 'relative',
+              zIndex: 2,
+              filter: 'drop-shadow(0 20px 35px rgba(0, 0, 0, 0.06))',
+              userSelect: 'none',
+              pointerEvents: 'none',
+            }}
+          />
         </div>
       </div>
     </div>
