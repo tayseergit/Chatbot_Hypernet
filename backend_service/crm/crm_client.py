@@ -257,6 +257,17 @@ class CRMClient:
         url = f"{self._auth_manager._base_url}/users/{customer_id}/invoices?limit=12&page=1"
         return self.get(url)
 
+    def get_invoice_amount(self, username: str) -> Dict[str, Any]:
+        """Fetch the invoice details and amount for a user."""
+        url = f"{self._auth_manager._base_url}/invoice/amount"
+        payload = {"username": username}
+        allowed = [
+            "adsl_service_amount", "iptv_service_amount", "days_extends_amount", 
+            "packages_amount", "adsl_monthes", "total_extends", "total_amount", 
+            "is_overdue", "discount_type", "discount_amount", "final_amount"
+        ]
+        return self.post(url, payload, allowed_fields=allowed)
+
     def activate_package(self, customer_id: str, package_id: int) -> Dict[str, Any]:
         """Activate a package for a user (loan or paid)."""
         url = f"{self._auth_manager._base_url}/packages/activate"

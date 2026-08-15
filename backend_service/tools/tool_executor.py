@@ -485,6 +485,56 @@ class ToolExecutor:
                     return {"success": False, "error": "CRMClient not configured"}
                 limit = parameters.get("limit", 30)
                 return self._crm_client.get_user_sessions(customer_id, limit)
+            elif tool_name == "get_invoice_amount":
+                username = parameters.get("username")
+                if not username:
+                    return {"success": False, "error": "Username required for invoice amount"}
+                if not self._crm_client:
+                    return {"success": False, "error": "CRMClient not configured"}
+                
+                response = self._crm_client.get_invoice_amount(username)
+                
+                # Add AI business logic notes to help the LLM interpret the invoice
+                if response.get("success") and "data" in response:
+                    data = response["data"]
+                    notes = []
+                    notes.append("حقيقة: هذه تفاصيل فاتورة العميل بناءً على رصيده والخدمات المفعلة.")
+                    
+                    if data.get("is_overdue"):
+                        notes.append("حقيقة هامة جداً: الفاتورة (مستحقة الدفع حالياً overdue). يجب على العميل دفعها لكي لا تنقطع الخدمة أو لكي يتم تفعيلها.")
+                    else:
+                        notes.append("حقيقة هامة جداً: الفاتورة (غير مستحقة حالياً incoming). هذا المبلغ هو ما سيدفعه العميل في الدورة القادمة أو عند التجديد القادم، وقد يتغير.")
+                    
+                    notes.append(f"إجمالي المبلغ قبل أي خصم (total_amount): {data.get('total_amount')} ل.س")
+                    
+                    if "discount_amount" in data and data.get("discount_amount") != 0:
+                        dt = data.get('discount_type', 'none')
+                        dt_arabic = "لا يوجد"
+                        if dt == "all":
+                            dt_arabic = "خصم كامل (مجاني)"
+                        elif dt == "part":
+                            dt_arabic = "خصم جزئي"
+                            
+                        notes.append(f"نوع الخصم: {dt_arabic}")
+                        notes.append(f"قيمة الخصم: {abs(data.get('discount_amount', 0))} ل.س")
+                        
+                    notes.append(f"القيمة النهائية المطلوب دفعها (بعد الخصم) (final_amount): {data.get('final_amount')} ل.س")
+                    
+                    if data.get("adsl_service_amount", 0) > 0:
+                        notes.append(f"ملاحظة: هذا يتضمن اشتراك الإنترنت (ADSL) بقيمة {data.get('adsl_service_amount')} ل.س لمدة {data.get('adsl_monthes')} شهر.")
+                        
+                    if data.get("iptv_service_amount", 0) > 0:
+                        notes.append(f"ملاحظة: هذا يتضمن اشتراك التلفزيون (IPTV) بقيمة {data.get('iptv_service_amount')} ل.س.")
+                    
+                    if data.get("packages_amount", 0) > 0:
+                        notes.append(f"ملاحظة: يوجد ديون باقات مفعلة لم يتم دفعها بقيمة {data.get('packages_amount')} ل.س.")
+                    
+                    if data.get("days_extends_amount", 0) > 0:
+                        notes.append(f"ملاحظة: يوجد مبلغ {data.get('days_extends_amount')} ل.س تكلفة أيام التمديد (لـ {data.get('total_extends')} أيام).")
+                        
+                    data["ai_business_logic_notes"] = notes
+                
+                return response
                 
             else:
                 return {"success": False, "error": f"Tool {tool_name} is not implemented yet in ToolExecutor."}
