@@ -19,6 +19,7 @@ import {
   ChevronLeft,
   FileText
 } from 'lucide-react';
+import { usePasswordAuth, PasswordPromptModal } from './PasswordPromptModal';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -64,6 +65,8 @@ export default function BroadcastTab() {
   const [userSearch, setUserSearch] = useState('');
   const [userFilter, setUserFilter] = useState('ALL'); // 'ALL' | 'AUTHED' | 'UNAUTHED'
   const [broadcastResult, setBroadcastResult] = useState(null);
+
+  const { requireAuth, modalProps } = usePasswordAuth();
 
   // Fetch Subscribers & History
   const fetchSubscribers = async () => {
@@ -151,52 +154,55 @@ export default function BroadcastTab() {
   };
 
   // Handle Send Broadcast
-  const handleSendBroadcast = async () => {
+  const handleSendBroadcast = () => {
     setShowConfirmModal(false);
-    setLoading(true);
-    setBroadcastResult(null);
+    requireAuth('إرسال إشعار للمشتركين', async () => {
+      setLoading(true);
+      setBroadcastResult(null);
 
-    try {
-      const payload = {
-        target: targetType,
-        user_ids: targetType === 'CUSTOM' ? selectedUserIds : undefined,
-        title: title.trim() || 'إشعار من هايبرنت',
-        message: message.trim(),
-        sent_by: 'مدير النظام (Dashboard Admin)'
-      };
+      try {
+        const payload = {
+          target: targetType,
+          user_ids: targetType === 'CUSTOM' ? selectedUserIds : undefined,
+          title: title.trim() || 'إشعار من هايبرنت',
+          message: message.trim(),
+          sent_by: 'مدير النظام (Dashboard Admin)'
+        };
 
-      const res = await fetch(`${API_BASE}/api/notifications/broadcast`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        setBroadcastResult({
-          type: 'success',
-          message: `تم إرسال الإشعار بنجاح إلى ${data.sent_count} من أصل ${data.total_recipients} مشترك.`
+        const res = await fetch(`${API_BASE}/api/notifications/broadcast`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
         });
-        setMessage('');
-        fetchHistory();
-      } else {
+
+        const data = await res.json();
+        if (res.ok) {
+          setBroadcastResult({
+            type: 'success',
+            message: `تم إرسال الإشعار بنجاح إلى ${data.sent_count} من أصل ${data.total_recipients} مشترك.`
+          });
+          setMessage('');
+          fetchHistory();
+        } else {
+          setBroadcastResult({
+            type: 'error',
+            message: data.detail || 'حدث خطأ أثناء إرسال الإشعار'
+          });
+        }
+      } catch (err) {
         setBroadcastResult({
           type: 'error',
-          message: data.detail || 'حدث خطأ أثناء إرسال الإشعار'
+          message: 'تعذر الاتصال بالخادم، يرجى التأكد من تشغيل الـ Backend'
         });
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      setBroadcastResult({
-        type: 'error',
-        message: 'تعذر الاتصال بالخادم، يرجى التأكد من تشغيل الـ Backend'
-      });
-    } finally {
-      setLoading(false);
-    }
+    });
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }} dir="rtl">
+      <PasswordPromptModal {...modalProps} />
 
       {/* ── Page Header ── */}
       <div className="hcn-page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 0 }}>
@@ -206,13 +212,6 @@ export default function BroadcastTab() {
             بث الإشعارات والتنبيهات
             <span className="hcn-badge hcn-badge-success">Telegram Broadcast</span>
           </h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--text-disabled)' }}>
-            <span>لوحة التحكم</span>
-            <span>•</span>
-            <span>الإدارة</span>
-            <span>•</span>
-            <span style={{ color: 'var(--text-primary)' }}>بث الإشعارات</span>
-          </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -251,12 +250,12 @@ export default function BroadcastTab() {
         </div>
 
         <div className="hcn-card" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--warning-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <UserX size={24} color="var(--warning)" />
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <UserX size={24} color="#64748b" />
           </div>
           <div>
             <div style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 600 }}>غير الموثقين (زوار)</div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--warning)' }}>{unauthedCount}</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)' }}>{unauthedCount}</div>
           </div>
         </div>
 
@@ -389,8 +388,8 @@ export default function BroadcastTab() {
                   gap: 12
                 }}
               >
-                <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--warning-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <UserX size={18} color="var(--warning)" />
+                <div style={{ width: 36, height: 36, borderRadius: 8, background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <UserX size={18} color="#64748b" />
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>غير الموثقين</div>
@@ -447,7 +446,7 @@ export default function BroadcastTab() {
           {/* 2. Quick Templates */}
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-              <Sparkles size={16} color="var(--warning)" />
+              <Sparkles size={16} color="var(--primary)" />
               <label style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
                 قوالب رسائل جاهزة
               </label>
@@ -506,7 +505,7 @@ export default function BroadcastTab() {
               <label style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
                 3. نص الإشعار
               </label>
-              <span style={{ fontSize: 12, color: message.length > 500 ? 'var(--warning)' : 'var(--text-disabled)' }}>
+              <span style={{ fontSize: 12, color: message.length > 500 ? '#ef4444' : 'var(--text-disabled)' }}>
                 {message.length} حرف
               </span>
             </div>

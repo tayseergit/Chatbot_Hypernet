@@ -13,7 +13,6 @@ import {
   ShieldCheck,
   Megaphone,
   LogOut,
-  Timer,
   KeyRound,
 } from 'lucide-react';
 
@@ -34,13 +33,12 @@ const sections = [
       { id: 'rag',           label: 'قاعدة المعرفة',       icon: BookOpen },
       { id: 'permissions',   label: 'الصلاحيات',          icon: ShieldCheck },
       { id: 'playground',    label: 'بيئة الاختبار',       icon: FlaskConical },
-      { id: 'settings',      label: 'الإعدادات',           icon: Settings },
     ]
   }
 ];
 
 export default function Sidebar({ activeTab, setActiveTab }) {
-  const { admin, logout, remainingFormatted } = useAuth();
+  const { admin, logout } = useAuth();
 
   const getRoleLabel = (role) => {
     switch (role) {
@@ -92,9 +90,6 @@ export default function Sidebar({ activeTab, setActiveTab }) {
           }}>
             HYPERNET
           </div>
-          <div style={{ fontSize: 11, color: 'var(--sidebar-text)', fontWeight: 600 }}>
-            بوابة الإدارة المركزية
-          </div>
         </div>
       </div>
 
@@ -136,30 +131,11 @@ export default function Sidebar({ activeTab, setActiveTab }) {
               }}>
                 {admin?.full_name || admin?.username || 'مدير النظام'}
               </div>
-              <div style={{
-                color: '#38bdf8',
-                fontSize: 11,
-                fontWeight: 600,
-              }}>
-                {getRoleLabel(admin?.role)}
-              </div>
             </div>
           </div>
 
-          {/* Session Timer & Security Badge */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            paddingTop: 8,
-            borderTop: '1px solid rgba(255, 255, 255, 0.05)',
-            fontSize: 11,
-            color: 'var(--sidebar-text)',
-          }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#fbbf24', fontWeight: 600 }}>
-              <Timer size={12} />
-              الجلسة: {remainingFormatted}
-            </span>
+          {/* Logout Button */}
+          <div style={{ paddingTop: 8, borderTop: '1px solid rgba(255, 255, 255, 0.05)', display: 'flex', justifyContent: 'flex-end' }}>
             <button
               onClick={() => logout(true)}
               title="تسجيل الخروج الآمن"
@@ -168,7 +144,7 @@ export default function Sidebar({ activeTab, setActiveTab }) {
                 color: '#f87171',
                 border: '1px solid rgba(239, 68, 68, 0.25)',
                 borderRadius: 6,
-                padding: '3px 8px',
+                padding: '3px 10px',
                 fontSize: 11,
                 fontWeight: 600,
                 cursor: 'pointer',
@@ -244,27 +220,7 @@ export default function Sidebar({ activeTab, setActiveTab }) {
         ))}
       </nav>
 
-      {/* System Status Footer */}
-      <div style={{
-        padding: '24px 20px',
-      }}>
-        <div style={{
-          background: 'rgba(145, 158, 171, 0.08)',
-          borderRadius: 12,
-          padding: '16px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 12,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ color: 'var(--sidebar-text)', fontSize: 13, fontWeight: 500 }}>اتصال الـ API</span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--primary)', fontWeight: 600, fontSize: 12 }}>
-              <span className="hcn-dot hcn-dot-green hcn-dot-pulse" style={{ width: 6, height: 6 }} />
-              مشفر وآمن
-            </span>
-          </div>
-        </div>
-      </div>
+
     </aside>
   );
 }

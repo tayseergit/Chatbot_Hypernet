@@ -1,12 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageSquare, Search, Eye, User, Cpu, RefreshCw, Send, ZoomIn, Image as ImageIcon } from 'lucide-react';
+import { usePasswordAuth, PasswordPromptModal } from './PasswordPromptModal';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+const SESSION_KEY = 'hypernet_selected_session';
 
 export default function SessionsChatTab() {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedSessionId, setSelectedSessionId] = useState(null);
+  const [selectedSessionId, setSelectedSessionId] = useState(
+    () => localStorage.getItem(SESSION_KEY) || null
+  );
   const [messages, setMessages] = useState([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -16,6 +21,23 @@ export default function SessionsChatTab() {
   const [previewImage, setPreviewImage] = useState(null);
   const chatEndRef = useRef(null);
 
+  const { requireAuth, modalProps } = usePasswordAuth();
+
+  // Persist session selection
+  const selectSession = (id) => {
+    localStorage.setItem(SESSION_KEY, id);
+    // Save current draft before switching
+    if (selectedSessionId) {
+      const draftKey = `hypernet_draft_${selectedSessionId}`;
+      if (replyText.trim()) localStorage.setItem(draftKey, replyText);
+      else localStorage.removeItem(draftKey);
+    }
+    setSelectedSessionId(id);
+    // Restore draft for the new session
+    const newDraft = localStorage.getItem(`hypernet_draft_${id}`) || '';
+    setReplyText(newDraft);
+  };
+
   // ── Fetch all sessions from backend ──
   const fetchSessions = () => {
     fetch(`${API_BASE}/api/crm/customers`)
@@ -23,8 +45,13 @@ export default function SessionsChatTab() {
       .then((data) => {
         setSessions(data);
         setLoading(false);
-        if (!selectedSessionId && data.length > 0) {
-          setSelectedSessionId(data[0].session_id);
+        // Only auto-select if no session was previously saved
+        const saved = localStorage.getItem(SESSION_KEY);
+        const savedExists = data.some((s) => s.session_id === saved);
+        if (!savedExists && data.length > 0) {
+          selectSession(data[0].session_id);
+        } else if (!selectedSessionId && !saved && data.length > 0) {
+          selectSession(data[0].session_id);
         }
       })
       .catch((err) => {
@@ -70,22 +97,24 @@ export default function SessionsChatTab() {
 
   const handleSendReply = async () => {
     if (!replyText.trim() || sendingReply || !selectedSessionId) return;
-    setSendingReply(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/sessions/${selectedSessionId}/reply`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: replyText.trim() })
-      });
-      if (res.ok) {
-        setReplyText('');
-        fetchMsgs();
+    requireAuth('إرسال رد للمشترك', async () => {
+      setSendingReply(true);
+      try {
+        const res = await fetch(`${API_BASE}/api/sessions/${selectedSessionId}/reply`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: replyText.trim() })
+        });
+        if (res.ok) {
+          setReplyText('');
+          fetchMsgs();
+        }
+      } catch (err) {
+        console.error('Failed to send reply:', err);
+      } finally {
+        setSendingReply(false);
       }
-    } catch (err) {
-      console.error('Failed to send reply:', err);
-    } finally {
-      setSendingReply(false);
-    }
+    });
   };
 
   // Helper to render message content (Text or Photo)
@@ -160,6 +189,7 @@ export default function SessionsChatTab() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 32, height: 'calc(100vh - 64px)' }}>
+      <PasswordPromptModal {...modalProps} />
       {/* ── رأس الصفحة ── */}
       <div
         className="hcn-page-header"
@@ -170,11 +200,6 @@ export default function SessionsChatTab() {
             مراقبة المحادثات والرد المباشر
             <span className="hcn-badge hcn-badge-success">حي ومباشر</span>
           </h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--text-disabled)' }}>
-            <span>لوحة التحكم</span>
-            <span>•</span>
-            <span style={{ color: 'var(--text-primary)' }}>المحادثات الحية والرد اليدوي للمشتركين</span>
-          </div>
         </div>
         <div style={{ display: 'flex', gap: 16 }}>
           <button onClick={fetchSessions} className="hcn-btn-secondary" style={{ padding: '8px 16px', fontSize: 13, gap: 6, display: 'flex', alignItems: 'center' }}>
@@ -236,7 +261,7 @@ export default function SessionsChatTab() {
                 return (
                   <div
                     key={s.session_id}
-                    onClick={() => setSelectedSessionId(s.session_id)}
+                    onClick={() => selectSession(s.session_id)}
                     style={{
                       padding: 16,
                       borderRadius: 12,
@@ -261,7 +286,7 @@ export default function SessionsChatTab() {
                           justifyContent: 'center',
                         }}
                       >
-                        <User size={20} color={isAuth ? 'var(--success)' : 'var(--warning)'} />
+                        <User size={20} color={isAuth ? 'var(--success)' : 'var(--text-secondary)'} />
                       </div>
                       <div>
                         <div style={{ fontWeight: 700, fontSize: 14, fontFamily: 'monospace' }}>
@@ -299,7 +324,7 @@ export default function SessionsChatTab() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, fontSize: 13 }}>
                   <span style={{ color: 'var(--text-secondary)' }}>
-                    حالة المصادقة: <strong style={{ color: isAuthed ? 'var(--success)' : 'var(--warning)' }}>{isAuthed ? 'موثق' : 'غير موثق'}</strong>
+                    حالة المصادقة: <strong style={{ color: isAuthed ? 'var(--success)' : 'var(--text-secondary)' }}>{isAuthed ? 'موثق' : 'غير موثق'}</strong>
                   </span>
                   <span style={{ color: 'var(--text-disabled)' }}>•</span>
                   <span style={{ color: 'var(--text-secondary)' }}>
@@ -410,20 +435,7 @@ export default function SessionsChatTab() {
             </div>
           )}
 
-          {/* ذيل التتبع */}
-          <div style={{ padding: '12px 24px', borderTop: '1px solid var(--border)', background: 'var(--bg-neutral)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(139, 92, 246, 0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Cpu size={14} color="#8B5CF6" />
-                </div>
-                <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
-                  الجلسة النشطة: {activeSession.session_id} | قاعدة البيانات: MySQL (isp_chatbot)
-                </span>
-              </div>
-              <span className="hcn-badge hcn-badge-success" style={{ fontSize: 11 }}>تحديث فوري</span>
-            </div>
-          </div>
+
         </div>
       </div>
     </div>

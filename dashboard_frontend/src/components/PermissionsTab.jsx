@@ -1,13 +1,14 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { ShieldCheck, AlertTriangle, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
+import { usePasswordAuth, PasswordPromptModal } from './PasswordPromptModal';
 
 const API = 'http://localhost:8000/api';
 
 const RISK_CONFIG = {
-  CRITICAL: { color: 'var(--error)', bg: 'var(--error-bg)', label: 'حرج' },
-  HIGH:     { color: 'var(--warning)', bg: 'var(--warning-bg)', label: 'عالي' },
-  MEDIUM:   { color: 'var(--warning)', bg: 'var(--warning-bg)', label: 'متوسط' },
-  LOW:      { color: 'var(--success)', bg: 'var(--success-bg)', label: 'منخفض' },
+  CRITICAL: { color: '#d32f2f', bg: '#ffebee', label: 'حرج' },
+  HIGH:     { color: '#ed6c02', bg: '#fff3e0', label: 'عالي' },
+  MEDIUM:   { color: '#ed6c02', bg: '#fff3e0', label: 'متوسط' },
+  LOW:      { color: '#2e7d32', bg: '#e8f5e9', label: 'منخفض' },
 };
 
 const CATEGORY_LABELS = {
@@ -16,25 +17,37 @@ const CATEGORY_LABELS = {
   CRM_TOOL: 'أدوات CRM',
 };
 
+const stripEmojis = (str) => {
+  if (!str) return '';
+  return str.replace(/[\u1000-\uFFFF]+/g, '').replace(/[^\x00-\x7F\u0600-\u06FF\s()a-zA-Z0-9_\-/]+/g, '').trim();
+};
+
 function Toggle({ isOn, onChange, disabled }) {
   return (
     <button
       onClick={onChange}
       disabled={disabled}
-      className="hcn-toggle"
       style={{
-        background: isOn ? 'var(--primary)' : 'var(--text-disabled)',
+        width: 44, height: 24, borderRadius: 12,
+        background: isOn ? '#1976d2' : '#e0e0e0',
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.7 : 1,
-        boxShadow: isOn ? 'var(--shadow-card)' : 'none',
+        border: 'none', position: 'relative', transition: 'background 0.2s',
+        padding: 0
       }}
     >
-      <span className="hcn-toggle-thumb" style={{ left: isOn ? 'calc(100% - 21px)' : 3 }} />
+      <span style={{
+        position: 'absolute', top: 2, left: isOn ? 'calc(100% - 22px)' : 2,
+        width: 20, height: 20, borderRadius: '50%', background: '#fff',
+        transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+      }} />
     </button>
   );
 }
 
-function PermissionCard({ perm, toggling, onToggle }) {
+
+
+function PermissionCard({ perm, toggling, onToggleRequest }) {
   const risk = RISK_CONFIG[perm.risk_level] || RISK_CONFIG.MEDIUM;
   const isEnabled = perm.is_enabled;
 
@@ -42,29 +55,29 @@ function PermissionCard({ perm, toggling, onToggle }) {
     <div style={{
       display: 'flex', alignItems: 'center', gap: 24,
       padding: '20px 24px',
-      background: 'var(--bg-paper)',
-      borderRadius: 12,
-      border: `1px solid ${isEnabled ? 'var(--border)' : 'var(--error-bg)'}`,
-      transition: 'all 0.2s',
+      background: '#ffffff',
+      borderRadius: 4,
+      border: '1px solid #e0e0e0',
+      borderRight: `4px solid ${isEnabled ? '#2e7d32' : '#d32f2f'}`,
+      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
       opacity: isEnabled ? 1 : 0.85,
     }}>
-      <span className={`hcn-dot ${isEnabled ? 'hcn-dot-green' : 'hcn-dot-red'} ${isEnabled ? 'hcn-dot-pulse' : ''}`} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
-          <span style={{ fontWeight: 700, fontSize: 16, color: 'var(--text-primary)' }}>{perm.display_name}</span>
-          <span className="hcn-badge" style={{ background: risk.bg, color: risk.color, fontSize: 12 }}>{risk.label}</span>
-          <span className={`hcn-badge ${isEnabled ? 'hcn-badge-success' : 'hcn-badge-error'}`} style={{ fontSize: 12 }}>
+          <span style={{ fontWeight: 600, fontSize: 16, color: '#212121' }}>{stripEmojis(perm.display_name)}</span>
+          <span style={{ background: risk.bg, color: risk.color, fontSize: 12, padding: '2px 8px', borderRadius: 2, fontWeight: 'bold', border: `1px solid ${risk.color}33` }}>{risk.label}</span>
+          <span style={{ background: isEnabled ? '#e8f5e9' : '#ffebee', color: isEnabled ? '#2e7d32' : '#d32f2f', fontSize: 12, padding: '2px 8px', borderRadius: 2, fontWeight: 'bold', border: `1px solid ${isEnabled ? '#2e7d3233' : '#d32f2f33'}` }}>
             {isEnabled ? 'مفعّل' : 'معطّل'}
           </span>
         </div>
-        <div style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6 }}>{perm.description}</div>
+        <div style={{ fontSize: 14, color: '#616161', lineHeight: 1.6 }}>{perm.description}</div>
         {perm.updated_at && (
-          <div style={{ fontSize: 12, color: 'var(--text-disabled)', marginTop: 8 }}>
-            آخر تعديل: {new Date(perm.updated_at).toLocaleString('ar-IQ')} بواسطة {perm.updated_by}
+          <div style={{ fontSize: 12, color: '#9e9e9e', marginTop: 8 }}>
+            آخر تعديل: {new Date(perm.updated_at).toLocaleString('ar-IQ')} {perm.updated_by ? `بواسطة ${perm.updated_by}` : ''}
           </div>
         )}
       </div>
-      <Toggle isOn={isEnabled} onChange={onToggle} disabled={toggling} />
+      <Toggle isOn={isEnabled} onChange={() => onToggleRequest(perm)} disabled={toggling} />
     </div>
   );
 }
@@ -77,6 +90,8 @@ export default function PermissionsTab() {
   const [emergencyLoading, setEmergencyLoading] = useState(false);
   const [toast, setToast]                     = useState(null);
   const [lastRefresh, setLastRefresh]         = useState(null);
+
+  const { requireAuth, modalProps } = usePasswordAuth();
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -101,19 +116,34 @@ export default function PermissionsTab() {
 
   useEffect(() => { fetchPermissions(); }, [fetchPermissions]);
 
-  const handleToggle = async (perm) => {
+  const requestToggle = (perm) => {
     if (toggling) return;
+    requireAuth(
+      perm.is_enabled ? `تعطيل الصلاحية (${stripEmojis(perm.display_name)})` : `تفعيل الصلاحية (${stripEmojis(perm.display_name)})`,
+      (adminUsername) => executeToggle(perm, adminUsername)
+    );
+  };
+
+  const requestEmergencyStop = () => {
+    if (emergencyLoading) return;
+    requireAuth(
+      emergencyActive ? 'استئناف النظام' : 'تفعيل الإيقاف الطارئ لجميع العمليات',
+      (adminUsername) => executeEmergencyStop(adminUsername)
+    );
+  };
+
+  const executeToggle = async (perm, adminUsername) => {
     setToggling(perm.tool_name);
     const newState = !perm.is_enabled;
     try {
       const res = await fetch(`${API}/permissions/${encodeURIComponent(perm.tool_name)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_enabled: newState, updated_by: 'dashboard_admin' }),
+        body: JSON.stringify({ is_enabled: newState, updated_by: adminUsername }),
       });
       if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'فشل التحديث'); }
       setPermissions(prev => prev.map(p => p.tool_name === perm.tool_name ? { ...p, is_enabled: newState } : p));
-      showToast(`${perm.display_name} — ${newState ? 'تم التفعيل' : 'تم التعطيل'}`, newState ? 'success' : 'warn');
+      showToast(`${stripEmojis(perm.display_name)} — ${newState ? 'تم التفعيل' : 'تم التعطيل'}`, newState ? 'success' : 'warn');
     } catch (e) {
       showToast(`خطأ: ${e.message}`, 'error');
     } finally {
@@ -121,15 +151,14 @@ export default function PermissionsTab() {
     }
   };
 
-  const handleEmergencyStop = async () => {
+  const executeEmergencyStop = async (adminUsername) => {
     const activate = !emergencyActive;
-    if (activate && !window.confirm('تحذير: إيقاف الطوارئ\n\nسيتم إيقاف جميع عمليات النظام فوراً.\nهل أنت متأكد؟')) return;
     setEmergencyLoading(true);
     try {
       const res = await fetch(`${API}/permissions/emergency-stop`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ activate, updated_by: 'dashboard_admin' }),
+        body: JSON.stringify({ activate, updated_by: adminUsername }),
       });
       if (!res.ok) throw new Error('فشل الطلب');
       setEmergencyActive(activate);
@@ -150,24 +179,26 @@ export default function PermissionsTab() {
   }, {});
 
   const toastStyles = {
-    success: { bg: 'var(--success-bg)', color: 'var(--success)', border: '1px solid rgba(0, 171, 85, 0.2)' },
-    warn:    { bg: 'var(--warning-bg)', color: 'var(--warning)', border: '1px solid rgba(255, 171, 0, 0.2)' },
-    error:   { bg: 'var(--error-bg)',   color: 'var(--error)',   border: '1px solid rgba(255, 86, 48, 0.2)' },
+    success: { bg: '#e8f5e9', color: '#2e7d32', border: '1px solid #a5d6a7' },
+    warn:    { bg: '#fff3e0', color: '#ed6c02', border: '1px solid #ffcc80' },
+    error:   { bg: '#ffebee', color: '#d32f2f', border: '1px solid #ef9a9a' },
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 32, maxWidth: 960, margin: '0 auto', width: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 32, maxWidth: 960, margin: '0 auto', width: '100%', fontFamily: 'system-ui, sans-serif' }}>
+      
+      <PasswordPromptModal {...modalProps} />
 
       {/* Toast */}
       {toast && (() => {
         const ts = toastStyles[toast.type] || toastStyles.success;
         return (
-          <div className="animate-slide-in" style={{
+          <div style={{
             position: 'fixed', top: 32, right: 32, zIndex: 9999,
-            padding: '16px 24px', borderRadius: 12,
+            padding: '16px 24px', borderRadius: 4,
             background: ts.bg, color: ts.color, border: ts.border,
-            fontWeight: 700, fontSize: 14, maxWidth: 400,
-            boxShadow: 'var(--shadow-dropdown)',
+            fontWeight: 600, fontSize: 14, maxWidth: 400,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
           }}>
             {toast.msg}
           </div>
@@ -175,90 +206,86 @@ export default function PermissionsTab() {
       })()}
 
       {/* ── رأس الصفحة ── */}
-      <div className="hcn-page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '2px solid #eee', paddingBottom: 16 }}>
         <div>
-           <h1 className="hcn-title" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
-            إدارة الصلاحيات
+           <h1 style={{ margin: 0, fontSize: 24, fontWeight: 'bold', color: '#212121' }}>
+            إدارة الصلاحيات والوصول
           </h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--text-disabled)' }}>
-            <span>لوحة التحكم</span>
-            <span>•</span>
-            <span style={{ color: 'var(--text-primary)' }}>الصلاحيات والطوارئ</span>
-            {lastRefresh && (
-              <>
-                <span>•</span>
-                <span style={{ fontSize: 12 }}>آخر تحديث: {lastRefresh}</span>
-              </>
-            )}
-          </div>
+          <div style={{ fontSize: 14, color: '#757575', marginTop: 4 }}>لوحة تحكم النظام - إدارة أمان العمليات</div>
         </div>
-        <button onClick={fetchPermissions} className="hcn-btn-outlined">
-          <RefreshCw size={20} /> تحديث البيانات
+        <button onClick={fetchPermissions} style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '8px 16px', background: '#f5f5f5', border: '1px solid #e0e0e0', borderRadius: 4,
+          color: '#424242', cursor: 'pointer', fontWeight: 600, fontSize: 14
+        }}>
+          <RefreshCw size={16} /> تحديث
         </button>
       </div>
 
       {/* ── بانر إيقاف الطوارئ ── */}
-      <div className="hcn-card" style={{ padding: 32, background: emergencyActive ? 'var(--error-bg)' : 'var(--bg-paper)', border: `1px solid ${emergencyActive ? 'var(--error)' : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ 
+        padding: 24, 
+        background: emergencyActive ? '#ffebee' : '#ffffff', 
+        border: `1px solid ${emergencyActive ? '#d32f2f' : '#e0e0e0'}`, 
+        borderRadius: 4,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+      }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: emergencyActive ? 'rgba(255, 86, 48, 0.16)' : 'var(--warning-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <AlertTriangle size={24} color={emergencyActive ? 'var(--error)' : 'var(--warning)'} />
-          </div>
           <div>
-            <div style={{ fontWeight: 800, fontSize: 18, color: emergencyActive ? 'var(--error)' : 'var(--warning)', marginBottom: 4 }}>
-              {emergencyActive ? 'إيقاف الطوارئ مفعّل' : 'إيقاف الطوارئ'}
+            <div style={{ fontWeight: 'bold', fontSize: 18, color: emergencyActive ? '#d32f2f' : '#212121', marginBottom: 4 }}>
+              {emergencyActive ? 'النظام في حالة توقف طارئ' : 'التحكم العام (إيقاف الطوارئ)'}
             </div>
-            <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
+            <div style={{ fontSize: 14, color: '#616161' }}>
               {emergencyActive
-                ? 'جميع عمليات النظام متوقفة. لا يمكن الوصول إلى أي خدمة.'
-                : 'يوقف جميع عمليات النظام فوراً. استخدم في الحالات الحرجة فقط.'}
+                ? 'جميع عمليات النظام متوقفة حالياً.'
+                : 'يوقف جميع عمليات النظام فوراً. يقتصر استخدامه على الحالات الأمنية والتقنية الحرجة.'}
             </div>
           </div>
         </div>
         <button
-          onClick={handleEmergencyStop}
+          onClick={requestEmergencyStop}
           disabled={emergencyLoading}
           style={{
-            padding: '12px 32px', borderRadius: 8, border: 'none',
+            padding: '10px 24px', borderRadius: 4, border: 'none',
             cursor: emergencyLoading ? 'not-allowed' : 'pointer',
-            fontWeight: 800, fontSize: 14, fontFamily: 'inherit',
-            background: emergencyActive ? 'var(--success)' : 'var(--error)',
+            fontWeight: 'bold', fontSize: 14, fontFamily: 'inherit',
+            background: emergencyActive ? '#2e7d32' : '#d32f2f',
             color: '#fff',
-            boxShadow: 'var(--shadow-card)',
             opacity: emergencyLoading ? 0.7 : 1, transition: 'all 0.2s',
           }}
         >
-          {emergencyLoading ? 'جارٍ التنفيذ...' : emergencyActive ? 'استئناف النظام' : 'إيقاف الطوارئ'}
+          {emergencyLoading ? 'جارٍ التنفيذ...' : emergencyActive ? 'استئناف النظام' : 'تفعيل إيقاف الطوارئ'}
         </button>
       </div>
 
       {/* ── قائمة الصلاحيات ── */}
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 80, color: 'var(--text-secondary)' }}>
-          <div style={{ fontSize: 16, marginBottom: 8, fontWeight: 700 }}>جارٍ التحميل...</div>
-          <div style={{ fontSize: 14 }}>يتم تحميل الصلاحيات من قاعدة البيانات</div>
+        <div style={{ textAlign: 'center', padding: 80, color: '#757575' }}>
+          <div style={{ fontSize: 16, marginBottom: 8, fontWeight: 600 }}>جارٍ التحميل...</div>
+          <div style={{ fontSize: 14 }}>يتم جلب سجلات الصلاحيات من الخادم</div>
         </div>
       ) : (
         ['GLOBAL', 'SERVICE', 'CRM_TOOL'].map(cat => {
           const items = grouped[cat];
           if (!items || items.length === 0) return null;
           return (
-            <div key={cat} style={{ marginBottom: 16 }}>
+            <div key={cat} style={{ marginBottom: 24 }}>
               <div style={{
-                fontSize: 14, fontWeight: 700, color: 'var(--text-secondary)',
-                textTransform: 'uppercase', letterSpacing: '0.05em',
-                marginBottom: 16, paddingBottom: 12, borderBottom: '1px solid var(--border)',
+                fontSize: 14, fontWeight: 'bold', color: '#424242',
+                marginBottom: 16, paddingBottom: 8, borderBottom: '1px solid #e0e0e0',
                 display: 'flex', alignItems: 'center', gap: 12,
               }}>
                 {CATEGORY_LABELS[cat] || cat}
-                <span className="hcn-badge hcn-badge-neutral" style={{ fontSize: 12, padding: '4px 8px' }}>{items.length} عناصر</span>
+                <span style={{ fontSize: 12, padding: '2px 8px', background: '#f5f5f5', border: '1px solid #e0e0e0', borderRadius: 2, color: '#616161' }}>{items.length} أوامر</span>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {items.map(perm => (
                   <PermissionCard
                     key={perm.tool_name}
                     perm={perm}
                     toggling={toggling === perm.tool_name}
-                    onToggle={() => handleToggle(perm)}
+                    onToggleRequest={requestToggle}
                   />
                 ))}
               </div>
@@ -268,14 +295,10 @@ export default function PermissionsTab() {
       )}
 
       {/* ── معلومات التطبيق ── */}
-      <div style={{ padding: '24px', borderRadius: 12, background: 'var(--info-bg)', border: '1px solid rgba(0, 184, 217, 0.2)' }}>
-        <div style={{ fontWeight: 700, color: 'var(--info)', marginBottom: 12, fontSize: 16 }}>آلية التطبيق متعددة الطبقات</div>
-        <div style={{ fontSize: 14, color: 'var(--text-primary)', lineHeight: 1.8 }}>
-          يتم تطبيق الصلاحيات المعطّلة عبر <strong>3 طبقات مستقلة</strong>:<br />
-          <strong>الطبقة 1</strong> — قاعدة البيانات (مرجع أساسي، مخزّن مؤقتاً 30 ثانية) &nbsp;·&nbsp;
-          <strong>الطبقة 2</strong> — WorkflowCoordinator (بوابة ما قبل التنفيذ) &nbsp;·&nbsp;
-          <strong>الطبقة 3</strong> — ToolExecutor (حارس الأداة النهائي)<br />
-          لا يمكن تجاوز الصلاحية المعطّلة — التغييرات تسري خلال 30 ثانية.
+      <div style={{ padding: 24, borderRadius: 4, background: '#f5f5f5', border: '1px solid #e0e0e0', marginTop: 16 }}>
+        <div style={{ fontWeight: 'bold', color: '#424242', marginBottom: 8, fontSize: 15 }}>ملاحظات النظام الفنية</div>
+        <div style={{ fontSize: 13, color: '#616161', lineHeight: 1.8 }}>
+          يتم تطبيق التعديلات بشكل فوري على مستوى قاعدة البيانات. نظراً لوجود طبقات تخزين مؤقت (Caching)، قد تستغرق التغييرات فترة تصل إلى 30 ثانية لتنعكس على جميع طبقات الخدمة بشكل كامل. يتم تسجيل اسم المسؤول وتوقيت الإجراء للتدقيق الأمني.
         </div>
       </div>
     </div>

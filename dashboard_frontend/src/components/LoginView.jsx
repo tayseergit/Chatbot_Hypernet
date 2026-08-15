@@ -2,21 +2,192 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Eye, EyeOff, AlertTriangle } from 'lucide-react';
 
+/* ───────────────────────────────── Keyframes injected once ─────────────────────────────────── */
+const STYLE = `
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap');
+
+@keyframes spin   { to { transform: rotate(360deg); } }
+@keyframes shake  {
+  0%,100% { transform: translateX(0); }
+  20%,60% { transform: translateX(-6px); }
+  40%,80% { transform: translateX(6px); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+* { box-sizing: border-box; }
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #edf2f9 inset !important;
+  -webkit-text-fill-color: #1e293b !important;
+}
+`;
+
+/* ──────────────────────────── Hypernet Logo (faithful SVG recreation) ──────────────────────── */
+function HypernetLogo({ size = 'md' }) {
+  const scale = size === 'sm' ? 0.8 : 1;
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 0,
+        transform: `scale(${scale})`,
+        transformOrigin: 'top center',
+        userSelect: 'none',
+      }}
+    >
+      <span
+        style={{
+          fontFamily: "'Arial Black', 'Impact', sans-serif",
+          fontSize: '19px',
+          fontWeight: 900,
+          letterSpacing: '3px',
+          color: 'var(--primary)',
+          lineHeight: 1,
+          textTransform: 'uppercase',
+        }}
+      >
+        HYPER
+      </span>
+
+      <svg
+        width="36"
+        height="22"
+        viewBox="0 0 36 22"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        style={{ margin: '1px 0' }}
+      >
+        <circle cx="18" cy="19" r="2.5" fill="var(--primary)" />
+        <path
+          d="M11.5 13.5 C13.2 11 15.5 9.8 18 9.8 C20.5 9.8 22.8 11 24.5 13.5"
+          stroke="var(--primary)"
+          strokeWidth="2.8"
+          strokeLinecap="round"
+          fill="none"
+        />
+        <path
+          d="M5.5 8 C9.5 3.5 13.5 1.5 18 1.5 C22.5 1.5 26.5 3.5 30.5 8"
+          stroke="var(--primary)"
+          strokeWidth="2.8"
+          strokeLinecap="round"
+          fill="none"
+        />
+      </svg>
+
+      <span
+        style={{
+          fontFamily: "'Arial Black', 'Impact', sans-serif",
+          fontSize: '19px',
+          fontWeight: 900,
+          letterSpacing: '3px',
+          color: 'var(--primary)',
+          lineHeight: 1,
+          textTransform: 'uppercase',
+        }}
+      >
+        NET
+      </span>
+
+      <span
+        style={{
+          fontFamily: "'Cairo', sans-serif",
+          fontSize: '9.5px',
+          fontWeight: 700,
+          color: 'var(--primary)',
+          letterSpacing: '0.3px',
+          marginTop: '4px',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        مزود خدمة الإنترنت
+      </span>
+    </div>
+  );
+}
+
+/* ─────────────────────────────── Input Field Component ─────────────────────────────────────── */
+function LabeledInput({ label, type, value, onChange, onKeyDown, onKeyUp, disabled, autoFocus, icon }) {
+  const [focused, setFocused] = useState(false);
+
+  return (
+    <div
+      style={{
+        backgroundColor: '#edf2f9',
+        borderRadius: '10px',
+        padding: '8px 14px 10px',
+        border: `1.5px solid ${focused ? '#7cb9f5' : 'transparent'}`,
+        transition: 'border-color 0.2s, background 0.2s',
+        position: 'relative',
+      }}
+    >
+      <label
+        style={{
+          display: 'block',
+          fontSize: '11px',
+          fontWeight: 700,
+          color: focused ? '#4a90d9' : '#94a3b8',
+          textAlign: 'right',
+          marginBottom: '3px',
+          transition: 'color 0.2s',
+          userSelect: 'none',
+        }}
+      >
+        {label}
+      </label>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', direction: 'rtl' }}>
+        <input
+          type={type}
+          value={value}
+          onChange={onChange}
+          onKeyDown={onKeyDown}
+          onKeyUp={onKeyUp}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          disabled={disabled}
+          autoFocus={autoFocus}
+          style={{
+            flex: 1,
+            background: 'transparent',
+            border: 'none',
+            outline: 'none',
+            fontSize: '14px',
+            fontWeight: 600,
+            color: '#1e293b',
+            fontFamily: 'inherit',
+            padding: 0,
+            textAlign: type === 'password' ? 'left' : 'right',
+            direction: type === 'password' ? 'ltr' : 'rtl',
+            letterSpacing: type === 'password' ? '2px' : 'normal',
+          }}
+        />
+        {icon && (
+          <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', color: '#94a3b8' }}>
+            {icon}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────── Main Component ────────────────────────────────────────── */
 export default function LoginView() {
   const { login } = useAuth();
-  const [username, setUsername] = useState('admin');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isCapsLock, setIsCapsLock] = useState(false);
 
-  const handleKeyDown = (e) => {
-    if (e.getModifierState && e.getModifierState('CapsLock')) {
-      setIsCapsLock(true);
-    } else {
-      setIsCapsLock(false);
-    }
+  const handleKeyEvent = (e) => {
+    setIsCapsLock(!!(e.getModifierState && e.getModifierState('CapsLock')));
   };
 
   const handleSubmit = async (e) => {
@@ -25,10 +196,8 @@ export default function LoginView() {
       setErrorMsg('يرجى إدخال اسم المستخدم وكلمة المرور');
       return;
     }
-
     setIsLoading(true);
     setErrorMsg('');
-
     try {
       await login(username.trim(), password);
     } catch (err) {
@@ -38,106 +207,49 @@ export default function LoginView() {
     }
   };
 
-  return (
-    <div
+  const EyeToggle = (
+    <button
+      type="button"
+      onClick={() => setShowPassword(!showPassword)}
+      tabIndex={-1}
       style={{
-        minHeight: '100vh',
-        width: '100%',
-        backgroundColor: '#ffffff',
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        padding: 0,
+        color: '#94a3b8',
         display: 'flex',
-        position: 'relative',
-        overflow: 'hidden',
-        fontFamily: "'Inter', 'Cairo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+        alignItems: 'center',
+        transition: 'color 0.2s',
       }}
+      onMouseEnter={(e) => (e.currentTarget.style.color = '#475569')}
+      onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
     >
-      {/* Top Right: Official Hypernet Brand Logo */}
-      <div
-        style={{
-          position: 'absolute',
-          top: '32px',
-          right: '48px',
-          zIndex: 20,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '2px',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span
-            style={{
-              fontSize: '28px',
-              fontWeight: 900,
-              letterSpacing: '2px',
-              color: '#009b4d',
-              fontFamily: "'Arial Black', 'Inter', sans-serif",
-              lineHeight: 1,
-            }}
-          >
-            HЧPER
-          </span>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            {/* Wifi Wave icon */}
-            <svg width="24" height="18" viewBox="0 0 24 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path
-                d="M12 15C12.8284 15 13.5 14.3284 13.5 13.5C13.5 12.6716 12.8284 12 12 12C11.1716 12 10.5 12.6716 10.5 13.5C10.5 14.3284 11.1716 15 12 15Z"
-                fill="#009b4d"
-              />
-              <path
-                d="M7.05 9.05C9.78 6.32 14.22 6.32 16.95 9.05"
-                stroke="#009b4d"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-              />
-              <path
-                d="M3.5 5.5C8.2 0.8 15.8 0.8 20.5 5.5"
-                stroke="#009b4d"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-              />
-            </svg>
-            <span
-              style={{
-                fontSize: '28px',
-                fontWeight: 900,
-                letterSpacing: '2px',
-                color: '#009b4d',
-                fontFamily: "'Arial Black', 'Inter', sans-serif",
-                lineHeight: 1,
-                marginTop: '-2px',
-              }}
-            >
-              ПET
-            </span>
-          </div>
-        </div>
-        <span
-          style={{
-            fontSize: '11px',
-            fontWeight: 700,
-            color: '#009b4d',
-            letterSpacing: '0.5px',
-            fontFamily: "'Cairo', sans-serif",
-          }}
-        >
-          مزود خدمة الإنترنت
-        </span>
-      </div>
+      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+    </button>
+  );
 
-      {/* Main 2-Column Container */}
+  return (
+    <>
+      <style>{STYLE}</style>
+
       <div
         style={{
-          width: '100%',
-          display: 'flex',
-          flexDirection: 'row',
           minHeight: '100vh',
+          width: '100%',
+          backgroundColor: '#ffffff',
+          display: 'flex',
+          fontFamily: "'Cairo', sans-serif",
+          position: 'relative',
+          overflow: 'hidden',
+          direction: 'rtl'
         }}
       >
-        {/* Left Column: Sign In Form */}
         <div
           style={{
-            flex: '0 0 45%',
-            minWidth: '360px',
+            flex: '0 0 44%',
+            minWidth: '340px',
+            minHeight: '100vh',
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'center',
@@ -147,22 +259,29 @@ export default function LoginView() {
             zIndex: 10,
           }}
         >
-          <div style={{ width: '100%', maxWidth: '340px' }}>
-            {/* Title */}
+          <div style={{ position: 'absolute', top: '36px', right: '48px' }}>
+            <HypernetLogo />
+          </div>
+
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '340px',
+              animation: 'fadeIn 0.5s ease',
+            }}
+          >
             <h1
               style={{
                 fontSize: '22px',
-                fontWeight: 700,
+                fontWeight: 800,
                 color: '#1e293b',
-                textAlign: 'center',
-                marginBottom: '32px',
+                marginBottom: '28px',
                 letterSpacing: '-0.3px',
               }}
             >
-              Sign in to Hyper CRM
+              تسجيل الدخول للنظام
             </h1>
 
-            {/* Error Notification */}
             {errorMsg && (
               <div
                 style={{
@@ -170,181 +289,76 @@ export default function LoginView() {
                   border: '1px solid #fecaca',
                   borderRadius: '8px',
                   padding: '10px 14px',
-                  marginBottom: '20px',
+                  marginBottom: '18px',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '10px',
                   color: '#dc2626',
-                  fontSize: '12px',
+                  fontSize: '13px',
                   fontWeight: 600,
                   animation: 'shake 0.3s ease',
                 }}
               >
                 <AlertTriangle size={16} style={{ flexShrink: 0 }} />
-                <span>{errorMsg}</span>
+                <span style={{ flex: 1 }}>{errorMsg}</span>
               </div>
             )}
 
-            {/* Login Form */}
             <form onSubmit={handleSubmit}>
-              {/* Username Input with top-right floating label */}
-              <div style={{ marginBottom: '16px', position: 'relative' }}>
-                <div
-                  style={{
-                    backgroundColor: '#eaf1fa',
-                    borderRadius: '8px',
-                    padding: '6px 14px 8px 14px',
-                    border: '1px solid transparent',
-                    transition: 'all 0.2s ease',
-                  }}
-                  onFocus={(e) => (e.currentTarget.style.borderColor = '#93c5fd')}
-                  onBlur={(e) => (e.currentTarget.style.borderColor = 'transparent')}
-                >
-                  <label
-                    style={{
-                      display: 'block',
-                      fontSize: '10px',
-                      color: '#94a3b8',
-                      fontWeight: 500,
-                      textAlign: 'right',
-                      marginBottom: '2px',
-                      userSelect: 'none',
-                    }}
-                  >
-                    Username
-                  </label>
-                  <input
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    disabled={isLoading}
-                    autoFocus
-                    placeholder="Enter username"
-                    style={{
-                      width: '100%',
-                      background: 'transparent',
-                      border: 'none',
-                      outline: 'none',
-                      fontSize: '14px',
-                      fontWeight: 500,
-                      color: '#1e293b',
-                      textAlign: 'center',
-                      fontFamily: 'inherit',
-                      padding: 0,
-                    }}
-                  />
-                </div>
+              <div style={{ marginBottom: '14px' }}>
+                <LabeledInput
+                  label="اسم المستخدم"
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  disabled={isLoading}
+                  autoFocus
+                />
               </div>
 
-              {/* Password Input with top-right floating label & left toggle icon */}
-              <div style={{ marginBottom: '24px', position: 'relative' }}>
+              <div style={{ marginBottom: '6px' }}>
+                <LabeledInput
+                  label="كلمة المرور"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={handleKeyEvent}
+                  onKeyUp={handleKeyEvent}
+                  disabled={isLoading}
+                  icon={EyeToggle}
+                />
+              </div>
+
+              {isCapsLock && (
                 <div
                   style={{
-                    backgroundColor: '#eaf1fa',
-                    borderRadius: '8px',
-                    padding: '6px 14px 8px 14px',
-                    border: '1px solid transparent',
+                    color: '#d97706',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    marginBottom: '10px',
                     display: 'flex',
-                    flexDirection: 'column',
-                    position: 'relative',
-                    transition: 'all 0.2s ease',
+                    alignItems: 'center',
+                    gap: '4px',
                   }}
-                  onFocus={(e) => (e.currentTarget.style.borderColor = '#93c5fd')}
-                  onBlur={(e) => (e.currentTarget.style.borderColor = 'transparent')}
                 >
-                  <label
-                    style={{
-                      display: 'block',
-                      fontSize: '10px',
-                      color: '#94a3b8',
-                      fontWeight: 500,
-                      textAlign: 'right',
-                      marginBottom: '2px',
-                      userSelect: 'none',
-                    }}
-                  >
-                    Password
-                  </label>
-                  <div style={{ display: 'flex', alignItems: 'center' }}>
-                    {/* Left Eye Toggle Icon */}
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      tabIndex={-1}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        padding: 0,
-                        marginRight: '8px',
-                        color: '#94a3b8',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        transition: 'color 0.2s',
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.color = '#475569')}
-                      onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
-                    >
-                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      onKeyDown={handleKeyDown}
-                      onKeyUp={handleKeyDown}
-                      disabled={isLoading}
-                      placeholder="••••••••••"
-                      style={{
-                        width: '100%',
-                        background: 'transparent',
-                        border: 'none',
-                        outline: 'none',
-                        fontSize: '14px',
-                        fontWeight: 500,
-                        color: '#1e293b',
-                        textAlign: 'center',
-                        letterSpacing: showPassword ? 'normal' : '2px',
-                        fontFamily: 'inherit',
-                        padding: 0,
-                      }}
-                    />
-                  </div>
+                  <AlertTriangle size={12} /> زر Caps Lock مفعل
                 </div>
+              )}
 
-                {/* Caps Lock Alert */}
-                {isCapsLock && (
-                  <div
-                    style={{
-                      color: '#d97706',
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      marginTop: '6px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}
-                  >
-                    <AlertTriangle size={12} /> Caps Lock is ON
-                  </div>
-                )}
-              </div>
+              <div style={{ height: '24px' }} />
 
-              {/* Login Button */}
               <button
                 type="submit"
                 disabled={isLoading}
                 style={{
                   width: '100%',
-                  height: '44px',
+                  height: '46px',
                   backgroundColor: '#1b2533',
                   color: '#ffffff',
                   border: 'none',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: 600,
+                  borderRadius: '10px',
+                  fontSize: '15px',
+                  fontWeight: 700,
                   fontFamily: 'inherit',
                   cursor: isLoading ? 'not-allowed' : 'pointer',
                   display: 'flex',
@@ -352,14 +366,20 @@ export default function LoginView() {
                   justifyContent: 'center',
                   gap: '8px',
                   transition: 'background-color 0.2s, transform 0.1s',
-                  boxShadow: '0 2px 8px rgba(27, 37, 51, 0.18)',
-                  opacity: isLoading ? 0.8 : 1,
+                  boxShadow: '0 2px 10px rgba(27, 37, 51, 0.22)',
+                  opacity: isLoading ? 0.82 : 1,
                 }}
                 onMouseEnter={(e) => {
                   if (!isLoading) e.currentTarget.style.backgroundColor = '#0f172a';
                 }}
                 onMouseLeave={(e) => {
                   if (!isLoading) e.currentTarget.style.backgroundColor = '#1b2533';
+                }}
+                onMouseDown={(e) => {
+                  if (!isLoading) e.currentTarget.style.transform = 'scale(0.99)';
+                }}
+                onMouseUp={(e) => {
+                  e.currentTarget.style.transform = 'scale(1)';
                 }}
               >
                 {isLoading ? (
@@ -368,95 +388,46 @@ export default function LoginView() {
                       style={{
                         width: '16px',
                         height: '16px',
-                        border: '2px solid rgba(255, 255, 255, 0.3)',
-                        borderTopColor: '#ffffff',
+                        border: '2px solid rgba(255,255,255,0.35)',
+                        borderTopColor: '#fff',
                         borderRadius: '50%',
                         display: 'inline-block',
                         animation: 'spin 0.8s linear infinite',
                       }}
                     />
-                    <span>Signing in...</span>
+                    <span>جاري التحقق...</span>
                   </>
                 ) : (
-                  <span>Login</span>
+                  <span>تسجيل الدخول</span>
                 )}
               </button>
             </form>
           </div>
-
-          {/* Bottom Left: Assistant Floating Widget */}
-          <div
-            style={{
-              position: 'fixed',
-              bottom: '24px',
-              left: '24px',
-              width: '46px',
-              height: '46px',
-              borderRadius: '50%',
-              backgroundColor: '#ffffff',
-              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0,0,0,0.08)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              transition: 'transform 0.2s, box-shadow 0.2s',
-              zIndex: 30,
-            }}
-            title="Hypernet AI Support"
-            onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.08)')}
-            onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-          >
-            {/* 4 Colored Dots / Assistant Icon */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#4285F4' }} />
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#EA4335' }} />
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#FBBC05' }} />
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#34A853' }} />
-            </div>
-          </div>
         </div>
 
-        {/* Right Column: 3D Illustration Area */}
         <div
           style={{
-            flex: '1 1 55%',
+            flex: '1 1 56%',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             padding: '40px',
             position: 'relative',
+            backgroundColor: '#f8fafc',
           }}
         >
-          {/* Subtle Ambient Background Gradient */}
           <div
             style={{
               position: 'absolute',
-              width: '450px',
-              height: '450px',
+              width: '500px',
+              height: '500px',
               borderRadius: '50%',
-              background: 'radial-gradient(circle, rgba(234, 241, 250, 0.8) 0%, rgba(255, 255, 255, 0) 70%)',
-              pointerEvents: 'none',
-            }}
-          />
-
-          {/* 3D Dashboard Claymorphism Render */}
-          <img
-            src="/login_illustration.jpg"
-            alt="Hypernet CRM Analytics Illustration"
-            style={{
-              maxWidth: '560px',
-              width: '100%',
-              height: 'auto',
-              objectFit: 'contain',
-              position: 'relative',
-              zIndex: 2,
-              filter: 'drop-shadow(0 20px 35px rgba(0, 0, 0, 0.06))',
-              userSelect: 'none',
+              background: 'radial-gradient(circle, rgba(220,235,250,0.6) 0%, rgba(248,250,252,0) 65%)',
               pointerEvents: 'none',
             }}
           />
         </div>
       </div>
-    </div>
+    </>
   );
 }

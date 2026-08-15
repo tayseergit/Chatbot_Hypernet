@@ -9,13 +9,20 @@ import AnalyticsTab from './components/AnalyticsTab';
 import CrmLookupTab from './components/CrmLookupTab';
 import KnowledgeBaseTab from './components/KnowledgeBaseTab';
 import TestPlaygroundTab from './components/TestPlaygroundTab';
-import SettingsTab from './components/SettingsTab';
 import PermissionsTab from './components/PermissionsTab';
 import BroadcastTab from './components/BroadcastTab';
 
 function DashboardContent() {
   const { isAuthenticated, isLoading } = useAuth();
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState(
+    () => localStorage.getItem('hypernet_active_tab') || 'overview'
+  );
+
+  // Persist tab selection across refreshes
+  const handleSetActiveTab = (tab) => {
+    localStorage.setItem('hypernet_active_tab', tab);
+    setActiveTab(tab);
+  };
 
   if (isLoading) {
     return (
@@ -55,7 +62,7 @@ function DashboardContent() {
 
   const renderActiveTab = () => {
     switch (activeTab) {
-      case 'overview':      return <OverviewTab setActiveTab={setActiveTab} />;
+      case 'overview':      return <OverviewTab setActiveTab={handleSetActiveTab} />;
       case 'sessions':      return <SessionsChatTab />;
       case 'analytics':     return <AnalyticsTab />;
       case 'crm':           return <CrmLookupTab />;
@@ -63,14 +70,13 @@ function DashboardContent() {
       case 'rag':           return <KnowledgeBaseTab />;
       case 'playground':    return <TestPlaygroundTab />;
       case 'permissions':   return <PermissionsTab />;
-      case 'settings':      return <SettingsTab />;
-      default:              return <OverviewTab setActiveTab={setActiveTab} />;
+      default:              return <OverviewTab setActiveTab={handleSetActiveTab} />;
     }
   };
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-default)' }} dir="rtl">
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+      <Sidebar activeTab={activeTab} setActiveTab={handleSetActiveTab} />
       <main
         style={{
           flex: 1,

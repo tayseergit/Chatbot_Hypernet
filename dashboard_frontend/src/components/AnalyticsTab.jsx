@@ -14,7 +14,6 @@ function StatCard({ label, value, sub, color = 'var(--text-primary)', iconBg, ic
       <div style={{ flex: 1 }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>{label}</div>
         <div style={{ fontSize: 24, fontWeight: 800, color, marginBottom: 2 }}>{value}</div>
-        {sub && <div style={{ fontSize: 11, color: 'var(--text-disabled)' }}>{sub}</div>}
       </div>
     </div>
   );
@@ -80,14 +79,13 @@ export default function AnalyticsTab() {
   const topIntent = data?.top_intent || 'لا يوجد';
   const intents = data?.intents || [];
   const tools = data?.tools || [];
-  const latencies = data?.latencies || {};
 
-  const intentColors = ['var(--primary)', '#8B5CF6', 'var(--info)', 'var(--warning)', 'var(--text-disabled)'];
+  const intentColors = ['var(--primary)', '#8B5CF6', 'var(--info)', '#64748b', 'var(--text-disabled)'];
   const toolColors = [
     { color: 'var(--primary)', bg: 'rgba(0, 167, 111, 0.12)' },
     { color: '#8B5CF6', bg: 'rgba(139, 92, 246, 0.12)' },
     { color: 'var(--info)', bg: 'rgba(0, 184, 217, 0.12)' },
-    { color: 'var(--warning)', bg: 'rgba(255, 171, 0, 0.12)' },
+    { color: '#64748b', bg: 'rgba(100, 116, 139, 0.12)' },
   ];
 
   return (
@@ -109,9 +107,6 @@ export default function AnalyticsTab() {
           <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
             الإحصائيات والتقارير
           </h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>
-            <span>تحليل مباشر ودقيق للعمليات والمحادثات الموثقة في قاعدة البيانات</span>
-          </div>
         </div>
 
         <button
@@ -130,7 +125,6 @@ export default function AnalyticsTab() {
         <StatCard
           label="إجمالي العمليات المنفذة"
           value={totalActions.toLocaleString()}
-          sub="سجلات العمليات المعتمدة"
           iconBg="rgba(0, 167, 111, 0.12)"
           iconColor="var(--primary)"
           icon={BarChart3}
@@ -138,7 +132,6 @@ export default function AnalyticsTab() {
         <StatCard
           label="إجمالي المشتركين والجلسات"
           value={totalSessions.toLocaleString()}
-          sub="المحادثات المسجلة"
           color="var(--info)"
           iconBg="rgba(0, 184, 217, 0.12)"
           iconColor="var(--info)"
@@ -147,16 +140,14 @@ export default function AnalyticsTab() {
         <StatCard
           label="المشتركون الموثقون"
           value={authedSessions.toLocaleString()}
-          sub="حسابات مربوطة بـ HyperCRM"
-          color="var(--warning)"
-          iconBg="rgba(255, 171, 0, 0.12)"
-          iconColor="var(--warning)"
+          color="#64748b"
+          iconBg="rgba(100, 116, 139, 0.12)"
+          iconColor="#64748b"
           icon={Search}
         />
         <StatCard
           label="الخدمة الأكثر طلباً"
           value={topIntent}
-          sub="النية الأكثر تكراراً"
           color="var(--success)"
           iconBg="rgba(34, 197, 94, 0.12)"
           iconColor="var(--success)"
@@ -197,73 +188,7 @@ export default function AnalyticsTab() {
           )}
         </div>
 
-        {/* سرعة وزمن الاستجابة */}
-        <div className="hcn-card" style={{ padding: 22, display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid var(--border-color)', paddingBottom: 12 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 8, background: 'rgba(34, 197, 94, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Clock size={20} color="var(--success)" />
-            </div>
-            <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-              مؤشرات زمن الاستجابة الحية
-            </h3>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <LatencyRow service="استجابة النموذج اللغوي (LLM)" desc="توليد ومعالجة نصوص المحادثة" value={latencies.llm || '85 ms'} color="var(--success)" />
-            <LatencyRow service="خدمات HyperCRM API" desc="استعلام الفواتير والحسابات" value={latencies.crm || '32 ms'} color="var(--info)" />
-            <LatencyRow service="محرك البحث الدلالي (RAG)" desc="استرجاع المعرفة والكتيبات" value={latencies.rag || '12 ms'} color="#8B5CF6" />
-            <LatencyRow service="تصنيف النوايا والطلبات" desc="معالجة القصد والهدف" value={latencies.intent || '15 ms'} color="var(--warning)" />
-
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '14px', background: 'var(--success-bg)', borderRadius: 10, border: '1px dashed var(--success)',
-              marginTop: 4
-            }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--success)' }}>متوسط الاستجابة الكلي</div>
-              <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--success)', fontFamily: 'monospace' }}>{latencies.total || '144 ms'}</span>
-            </div>
-          </div>
-        </div>
       </div>
-
-      {/* ── ملخص استخدام الأدوات ── */}
-      <div className="hcn-card" style={{ padding: 22, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid var(--border-color)', paddingBottom: 12 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 8, background: 'rgba(255, 171, 0, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Activity size={20} color="var(--warning)" />
-          </div>
-          <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-            إحصائيات استدعاء الأدوات والخدمات (MySQL)
-          </h3>
-        </div>
-
-        {tools.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 20, color: 'var(--text-disabled)', fontSize: 13 }}>
-            لا توجد أدوات مستدعاة حتى الآن.
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
-            {tools.map((t, idx) => {
-              const tc = toolColors[idx % toolColors.length];
-              return (
-                <div key={t.tool} style={{ background: 'var(--bg-paper)', borderRadius: 10, padding: '16px', border: '1px solid var(--border-color)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, borderRadius: 8, background: tc.bg, marginBottom: 12 }}>
-                    <Activity size={18} color={tc.color} />
-                  </div>
-                  <div style={{ fontSize: 13, fontFamily: 'monospace', fontWeight: 700, color: tc.color, marginBottom: 4 }}>
-                    {t.tool}
-                  </div>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>
-                    {t.count.toLocaleString()}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{t.pct}% من إجمالي العمليات</div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
     </div>
   );
 }

@@ -109,11 +109,6 @@ export default function AgentActionLogsTab() {
           <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
             سجل العمليات
           </h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>
-            <span>متابعة وتدقيق العمليات والمهام المنفذة آلياً</span>
-            <span>•</span>
-            <span>إجمالي السجلات: <strong style={{ color: 'var(--text-primary)' }}>{logs.length}</strong></span>
-          </div>
         </div>
 
         {/* أزرار الإجراءات العلوية بتصميم متناسق وأفقي */}
@@ -292,7 +287,7 @@ export default function AgentActionLogsTab() {
                       <td style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
                         {log.timestamp}
                       </td>
-                      <td>
+                      <td style={{ wordBreak: 'break-all' }}>
                         <span style={{ color: 'var(--info)', fontWeight: 600, fontFamily: 'monospace', fontSize: 12 }}>
                           {log.sessionId}
                         </span>

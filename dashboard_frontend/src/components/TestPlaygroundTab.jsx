@@ -3,77 +3,152 @@ import { Send, RotateCcw, FlaskConical, Bot, User, CheckCircle2 } from 'lucide-r
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
+const PLAYGROUND_MSGS_KEY     = 'hypernet_playground_messages';
+const PLAYGROUND_DRAFT_KEY    = 'hypernet_playground_draft';
+const PLAYGROUND_PENDING_KEY  = 'hypernet_playground_processing';
+
+const DEFAULT_MSG = {
+  sender: 'bot',
+  text: 'مرحباً بك في بيئة الاختبار. يمكنك إدخال أي استفسار أو أمر لتجربة استجابة البوت وقاعدة المعرفة والخدمات التلقائية.',
+  time: new Date().toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' }),
+};
+
+// ─── Module-level: survives tab switches (component unmount/remount) ───────────
+let _pendingPromise = null;         // The in-flight fetch promise
+let _mountedSetters = null;         // Setters of the currently mounted instance
+
+/** Append a message directly to localStorage (safe even when component is unmounted) */
+function _appendToStorage(msg) {
+  try {
+    const raw = localStorage.getItem(PLAYGROUND_MSGS_KEY);
+    const msgs = raw ? JSON.parse(raw) : [DEFAULT_MSG];
+    msgs.push(msg);
+    localStorage.setItem(PLAYGROUND_MSGS_KEY, JSON.stringify(msgs));
+  } catch { /* quota */ }
+}
+
 export default function TestPlaygroundTab() {
-  const [inputPrompt, setInputPrompt] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [messages, setMessages] = useState([
-    {
-      sender: 'bot',
-      text: 'مرحباً بك في بيئة الاختبار. يمكنك إدخال أي استفسار أو أمر لتجربة استجابة البوت وقاعدة المعرفة والخدمات التلقائية.',
-      time: new Date().toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' }),
-    },
-  ]);
+  const [inputPrompt, setInputPrompt] = useState(
+    () => localStorage.getItem(PLAYGROUND_DRAFT_KEY) || ''
+  );
+  const [isProcessing, setIsProcessing] = useState(
+    () => localStorage.getItem(PLAYGROUND_PENDING_KEY) === '1'
+  );
+  const [messages, setMessages] = useState(() => {
+    try {
+      const saved = localStorage.getItem(PLAYGROUND_MSGS_KEY);
+      return saved ? JSON.parse(saved) : [DEFAULT_MSG];
+    } catch {
+      return [DEFAULT_MSG];
+    }
+  });
   const bottomRef = useRef(null);
 
+  // Register this instance's setters so the module-level fetch can update UI
+  useEffect(() => {
+    _mountedSetters = { setMessages, setIsProcessing };
+
+    // If there's an in-flight fetch from before the tab switch, attach to its result
+    if (_pendingPromise && isProcessing) {
+      _pendingPromise.then(() => {
+        // localStorage was already updated by the fetch callback;
+        // re-read it so the UI reflects the new message
+        try {
+          const raw = localStorage.getItem(PLAYGROUND_MSGS_KEY);
+          const msgs = raw ? JSON.parse(raw) : [DEFAULT_MSG];
+          setMessages(msgs);
+        } catch { /* ignore */ }
+        setIsProcessing(false);
+        _pendingPromise = null;
+      });
+    }
+
+    return () => {
+      // Component is unmounting — clear setters so the pending fetch
+      // won't try to call setState on the dead instance
+      _mountedSetters = null;
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Persist messages to localStorage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem(PLAYGROUND_MSGS_KEY, JSON.stringify(messages));
+    } catch { /* quota */ }
+  }, [messages]);
+
+  // Scroll to bottom
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isProcessing]);
 
-  const handleSend = async () => {
+  // Persist draft as user types
+  const handleInputChange = (e) => {
+    setInputPrompt(e.target.value);
+    localStorage.setItem(PLAYGROUND_DRAFT_KEY, e.target.value);
+  };
+
+  const handleSend = () => {
     if (!inputPrompt.trim() || isProcessing) return;
 
     const userPrompt = inputPrompt.trim();
     const nowTime = new Date().toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' });
-    
-    setMessages(prev => [...prev, {
-      sender: 'user',
-      text: userPrompt,
-      time: nowTime,
-    }]);
+
+    // 1. Add user message to UI & localStorage immediately
+    const userMsg = { sender: 'user', text: userPrompt, time: nowTime };
+    setMessages(prev => [...prev, userMsg]);
     setInputPrompt('');
+    localStorage.removeItem(PLAYGROUND_DRAFT_KEY);
     setIsProcessing(true);
+    localStorage.setItem(PLAYGROUND_PENDING_KEY, '1');
 
-    try {
-      const res = await fetch(`${API}/api/chat/interact`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          session_id: 'playground_admin_session',
-          customer_id: 'HYP-64253',
-          prompt: userPrompt
-        }),
-      });
-
-      if (res.ok) {
+    // 2. Fire the fetch at module level — will survive tab switches
+    _pendingPromise = (async () => {
+      let botMsg;
+      try {
+        const res = await fetch(`${API}/api/chat/interact`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: 'playground_admin_session',
+            customer_id: 'HYP-64253',
+            prompt: userPrompt,
+          }),
+        });
         const data = await res.json();
-        setMessages(prev => [...prev, {
+        botMsg = {
           sender: 'bot',
           text: data.response || 'تم استلام الطلب ومعالجته.',
           time: new Date().toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' }),
-        }]);
-      } else {
-        throw new Error(`HTTP ${res.status}`);
+        };
+      } catch (err) {
+        console.error('Playground API error:', err);
+        botMsg = {
+          sender: 'bot',
+          text: 'تعذر الاتصال بالخادم لمعالجة الرسالة. يرجى التحقق من اتصال الخدمة.',
+          time: new Date().toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' }),
+        };
       }
-    } catch (err) {
-      console.error('Error contacting chat interact API:', err);
-      setMessages(prev => [...prev, {
-        sender: 'bot',
-        text: 'تعذر الاتصال بالخادم لمعالجة الرسالة. يرجى التحقق من اتصال الخدمة.',
-        time: new Date().toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' }),
-      }]);
-    } finally {
-      setIsProcessing(false);
-    }
+
+      // 3. Write to localStorage FIRST — so remount will find the message
+      _appendToStorage(botMsg);
+      localStorage.removeItem(PLAYGROUND_PENDING_KEY);
+
+      // 4. Update UI only if the component is still/already mounted
+      if (_mountedSetters) {
+        _mountedSetters.setMessages(prev => [...prev, botMsg]);
+        _mountedSetters.setIsProcessing(false);
+      }
+
+      _pendingPromise = null;
+    })();
   };
 
   const handleReset = () => {
-    setMessages([
-      {
-        sender: 'bot',
-        text: 'تمت إعادة ضبط جلسة الاختبار. يمكنك البدء بإرسال الرسائل الآن.',
-        time: new Date().toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' }),
-      }
-    ]);
+    setMessages([DEFAULT_MSG]);
+    localStorage.removeItem(PLAYGROUND_MSGS_KEY);
+    localStorage.removeItem(PLAYGROUND_DRAFT_KEY);
+    localStorage.removeItem(PLAYGROUND_PENDING_KEY);
   };
 
   return (
@@ -95,9 +170,6 @@ export default function TestPlaygroundTab() {
           <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
             بيئة الاختبار التفاعلية
           </h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>
-            <span>اختبار مباشر لنموذج الذكاء الاصطناعي وخدمات المشتركين وقاعدة المعرفة</span>
-          </div>
         </div>
 
         <button
@@ -172,7 +244,7 @@ export default function TestPlaygroundTab() {
             type="text"
             placeholder="اكتب استفسارك هنا لاختبار استجابة النظام..."
             value={inputPrompt}
-            onChange={(e) => setInputPrompt(e.target.value)}
+            onChange={handleInputChange}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
             className="hcn-input"
             style={{ flex: 1, height: 42, fontSize: 13 }}

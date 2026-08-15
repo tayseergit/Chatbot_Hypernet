@@ -4,6 +4,7 @@ import {
   User, CheckCircle2, MoreVertical, MessageSquare, ShieldAlert,
   Clock, MapPin, RefreshCw, Trash2, LogOut, Send, Image as ImageIcon, ZoomIn, ExternalLink
 } from 'lucide-react';
+import { usePasswordAuth, PasswordPromptModal } from './PasswordPromptModal';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -127,7 +128,7 @@ const DETAIL_TABS = [
   { key: 'overview', label: 'بيانات المشترك', icon: User },
 ];
 
-function DetailModal({ cust, onClose, onDelete }) {
+function DetailModal({ cust, onClose, onDelete, requireAuth }) {
   const [tab, setTab] = useState('chat');
   const [messages, setMessages] = useState([]);
   const [loadingMsg, setLoadingMsg] = useState(false);
@@ -169,22 +170,24 @@ function DetailModal({ cust, onClose, onDelete }) {
 
   const handleSendReply = async () => {
     if (!replyText.trim() || sendingReply) return;
-    setSendingReply(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/sessions/${cust.session_id}/reply`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: replyText.trim() })
-      });
-      if (res.ok) {
-        setReplyText('');
-        fetchMessages();
+    requireAuth('إرسال رد للمشترك', async () => {
+      setSendingReply(true);
+      try {
+        const res = await fetch(`${API_BASE}/api/sessions/${cust.session_id}/reply`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: replyText.trim() })
+        });
+        if (res.ok) {
+          setReplyText('');
+          fetchMessages();
+        }
+      } catch (err) {
+        console.error('Failed to send reply:', err);
+      } finally {
+        setSendingReply(false);
       }
-    } catch (err) {
-      console.error('Failed to send reply:', err);
-    } finally {
-      setSendingReply(false);
-    }
+    });
   };
 
   const isAuthed = cust.auth_state === 'AUTHENTICATED' || cust.authenticated;
@@ -426,6 +429,8 @@ export default function CrmLookupTab() {
   const [filterAuth, setFilterAuth] = useState('All');
   const [activeTab, setActiveTab] = useState('all');
 
+  const { requireAuth, modalProps } = usePasswordAuth();
+
   const fetchCustomers = () => {
     fetch(`${API_BASE}/api/crm/customers`)
       .then(res => res.json())
@@ -446,24 +451,28 @@ export default function CrmLookupTab() {
   }, []);
 
   const handleDeleteSession = (sessionId) => {
-    if (!window.confirm(`هل أنت متأكد من حذف الجلسة ${sessionId}؟`)) return;
-    fetch(`${API_BASE}/api/sessions/${sessionId}`, { method: 'DELETE' })
-      .then(res => res.json())
-      .then(() => {
-        setSelected(prev => prev.filter(id => id !== sessionId));
-        fetchCustomers();
-      })
-      .catch(err => console.error('Failed to delete session:', err));
+    requireAuth('حذف جلسة المشترك', () => {
+      if (!window.confirm(`هل أنت متأكد من حذف الجلسة ${sessionId}؟`)) return;
+      fetch(`${API_BASE}/api/sessions/${sessionId}`, { method: 'DELETE' })
+        .then(res => res.json())
+        .then(() => {
+          setSelected(prev => prev.filter(id => id !== sessionId));
+          fetchCustomers();
+        })
+        .catch(err => console.error('Failed to delete session:', err));
+    });
   };
 
   const handleBatchDelete = () => {
-    if (!window.confirm(`هل أنت متأكد من حذف ${selected.length} جلسة محددة؟`)) return;
-    Promise.all(selected.map(id => fetch(`${API_BASE}/api/sessions/${id}`, { method: 'DELETE' })))
-      .then(() => {
-        setSelected([]);
-        fetchCustomers();
-      })
-      .catch(err => console.error('Batch delete failed:', err));
+    requireAuth('حذف جلسات متعددة', () => {
+      if (!window.confirm(`هل أنت متأكد من حذف ${selected.length} جلسة محددة؟`)) return;
+      Promise.all(selected.map(id => fetch(`${API_BASE}/api/sessions/${id}`, { method: 'DELETE' })))
+        .then(() => {
+          setSelected([]);
+          fetchCustomers();
+        })
+        .catch(err => console.error('Batch delete failed:', err));
+    });
   };
 
   // ── Global search and multi-criteria filter ──
@@ -514,17 +523,11 @@ export default function CrmLookupTab() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', position: 'relative' }}>
+      <PasswordPromptModal {...modalProps} />
       {/* ── رأس الصفحة ── */}
       <div className="hcn-page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <h1 className="hcn-title" style={{ marginBottom: 8 }}>جلسات العملاء</h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--text-disabled)' }}>
-            <span>لوحة التحكم</span>
-            <span>•</span>
-            <span>العملاء</span>
-            <span>•</span>
-            <span style={{ color: 'var(--text-primary)' }}>جلسات التلجرام الحية</span>
-          </div>
         </div>
         <button onClick={fetchCustomers} className="hcn-btn-secondary" style={{ padding: '8px 16px', fontSize: 13, gap: 6, display: 'flex', alignItems: 'center' }}>
           <RefreshCw size={14} /> تحديث
@@ -699,6 +702,7 @@ export default function CrmLookupTab() {
           cust={openCustomer}
           onClose={() => setOpenCustomer(null)}
           onDelete={handleDeleteSession}
+          requireAuth={requireAuth}
         />
       )}
     </div>

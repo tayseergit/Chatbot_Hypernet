@@ -4,6 +4,7 @@ import {
   Download, FileText, Phone, Wifi, Tv, DollarSign, X, AlertCircle,
   Save, CheckCircle2, Loader2, Filter, Layers, Check
 } from 'lucide-react';
+import { usePasswordAuth, PasswordPromptModal } from './PasswordPromptModal';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -60,6 +61,8 @@ export default function KnowledgeBaseTab() {
   const [testQuery, setTestQuery]       = useState('');
   const [testResult, setTestResult]     = useState(null);
   const [testingRAG, setTestingRAG]     = useState(false);
+
+  const { requireAuth, modalProps } = usePasswordAuth();
 
   const showToast = (type, text) => {
     setToastMsg({ type, text });
@@ -151,125 +154,137 @@ export default function KnowledgeBaseTab() {
   }, [qaSearch, qaCategory]);
 
   // Re-index all sources
-  const handleReindex = async () => {
-    setReindexing(true);
-    try {
-      const res = await fetch(`${API}/api/rag/reindex`, { method: 'POST' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      showToast('success', 'تمت مزامنة البيانات وتحديث قاعدة المعرفة بنجاح');
-      fetchStats();
-      fetchQA();
-      fetchPDFs();
-    } catch (e) {
-      showToast('error', `تعذرت المزامنة: ${e.message}`);
-    } finally {
-      setReindexing(false);
-    }
+  const handleReindex = () => {
+    requireAuth('مزامنة وتحديث بيانات قاعدة المعرفة', async () => {
+      setReindexing(true);
+      try {
+        const res = await fetch(`${API}/api/rag/reindex`, { method: 'POST' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        showToast('success', 'تمت مزامنة البيانات وتحديث قاعدة المعرفة بنجاح');
+        fetchStats();
+        fetchQA();
+        fetchPDFs();
+      } catch (e) {
+        showToast('error', `تعذرت المزامنة: ${e.message}`);
+      } finally {
+        setReindexing(false);
+      }
+    });
   };
 
   // Save / Update Q&A
-  const handleSaveQA = async (e) => {
+  const handleSaveQA = (e) => {
     e.preventDefault();
     if (!formData.question.trim() || !formData.answer.trim()) {
       showToast('error', 'يرجى إدخال السؤال والإجابة المعتمدة');
       return;
     }
-    setSavingQa(true);
-    try {
-      const url = modalMode === 'add' ? `${API}/api/rag/qa` : `${API}/api/rag/qa/${editIndex}`;
-      const method = modalMode === 'add' ? 'POST' : 'PUT';
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      showToast('success', modalMode === 'add' ? 'تمت إضافة السؤال بنجاح' : 'تم تعديل السؤال بنجاح');
-      setModalOpen(false);
-      fetchQA();
-      fetchStats();
-    } catch (e) {
-      showToast('error', `تعذر الحفظ: ${e.message}`);
-    } finally {
-      setSavingQa(false);
-    }
+    requireAuth(modalMode === 'add' ? 'إضافة سؤال جديد' : 'تعديل السؤال المحدد', async () => {
+      setSavingQa(true);
+      try {
+        const url = modalMode === 'add' ? `${API}/api/rag/qa` : `${API}/api/rag/qa/${editIndex}`;
+        const method = modalMode === 'add' ? 'POST' : 'PUT';
+        const res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData)
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        showToast('success', modalMode === 'add' ? 'تمت إضافة السؤال بنجاح' : 'تم تعديل السؤال بنجاح');
+        setModalOpen(false);
+        fetchQA();
+        fetchStats();
+      } catch (e) {
+        showToast('error', `تعذر الحفظ: ${e.message}`);
+      } finally {
+        setSavingQa(false);
+      }
+    });
   };
 
   // Delete Q&A
-  const handleDeleteQA = async (id) => {
+  const handleDeleteQA = (id) => {
     if (!window.confirm('هل ترغب في تأكيد حذف هذا السجل؟')) return;
-    try {
-      const res = await fetch(`${API}/api/rag/qa/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      showToast('success', 'تم حذف السجل بنجاح');
-      fetchQA();
-      fetchStats();
-    } catch (e) {
-      showToast('error', `تعذر الحذف: ${e.message}`);
-    }
+    requireAuth('حذف سؤال من قاعدة المعرفة', async () => {
+      try {
+        const res = await fetch(`${API}/api/rag/qa/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        showToast('success', 'تم حذف السجل بنجاح');
+        fetchQA();
+        fetchStats();
+      } catch (e) {
+        showToast('error', `تعذر الحذف: ${e.message}`);
+      }
+    });
   };
 
   // Save Company Info Changes
-  const handleSaveCompany = async () => {
-    setSavingCompany(true);
-    try {
-      const res = await fetch(`${API}/api/rag/company-info`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(companyData)
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      showToast('success', 'تم حفظ التغييرات بنجاح');
-      fetchStats();
-    } catch (e) {
-      showToast('error', `تعذر حفظ البيانات: ${e.message}`);
-    } finally {
-      setSavingCompany(false);
-    }
+  const handleSaveCompany = () => {
+    requireAuth('حفظ تعديلات الباقات والخدمات الرسمية', async () => {
+      setSavingCompany(true);
+      try {
+        const res = await fetch(`${API}/api/rag/company-info`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(companyData)
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        showToast('success', 'تم حفظ التغييرات بنجاح');
+        fetchStats();
+      } catch (e) {
+        showToast('error', `تعذر حفظ البيانات: ${e.message}`);
+      } finally {
+        setSavingCompany(false);
+      }
+    });
   };
 
   // Upload PDF Guide
-  const handlePdfUpload = async (e) => {
+  const handlePdfUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.name.toLowerCase().endsWith('.pdf')) {
       showToast('error', 'يرجى اختيار ملف بصيغة PDF');
       return;
     }
-    const data = new FormData();
-    data.append('file', file);
-    setUploadingPdf(true);
-    try {
-      const res = await fetch(`${API}/api/rag/pdfs/upload`, {
-        method: 'POST',
-        body: data
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      showToast('success', `تم رفع الدليل ${file.name} بنجاح`);
-      fetchPDFs();
-      fetchStats();
-    } catch (e) {
-      showToast('error', `تعذر رفع الملف: ${e.message}`);
-    } finally {
-      setUploadingPdf(false);
-      e.target.value = null;
-    }
+    requireAuth(`رفع ملف ${file.name}`, async () => {
+      const data = new FormData();
+      data.append('file', file);
+      setUploadingPdf(true);
+      try {
+        const res = await fetch(`${API}/api/rag/pdfs/upload`, {
+          method: 'POST',
+          body: data
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        showToast('success', `تم رفع الدليل ${file.name} بنجاح`);
+        fetchPDFs();
+        fetchStats();
+      } catch (e) {
+        showToast('error', `تعذر رفع الملف: ${e.message}`);
+      } finally {
+        setUploadingPdf(false);
+        e.target.value = null; // Clear input if possible (may not work directly if e.target is lost, but safe)
+      }
+    });
   };
 
   // Delete PDF
-  const handleDeletePdf = async (filename) => {
+  const handleDeletePdf = (filename) => {
     if (!window.confirm(`هل ترغب في تأكيد حذف الملف "${filename}"؟`)) return;
-    try {
-      const res = await fetch(`${API}/api/rag/pdfs/${encodeURIComponent(filename)}`, {
-        method: 'DELETE'
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      showToast('success', 'تم حذف الملف بنجاح');
-      fetchPDFs();
-      fetchStats();
-    } catch (e) {
-      showToast('error', `تعذر الحذف: ${e.message}`);
-    }
+    requireAuth(`حذف ملف ${filename}`, async () => {
+      try {
+        const res = await fetch(`${API}/api/rag/pdfs/${encodeURIComponent(filename)}`, {
+          method: 'DELETE'
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        showToast('success', 'تم حذف الملف بنجاح');
+        fetchPDFs();
+        fetchStats();
+      } catch (e) {
+        showToast('error', `تعذر الحذف: ${e.message}`);
+      }
+    });
   };
 
   // Semantic Tester
@@ -300,6 +315,8 @@ export default function KnowledgeBaseTab() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18, maxWidth: '100%', overflow: 'hidden' }}>
+      
+      <PasswordPromptModal {...modalProps} />
 
       {/* ── رأس الصفحة الرسمي ── */}
       <div style={{
@@ -317,11 +334,6 @@ export default function KnowledgeBaseTab() {
           <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
             قاعدة المعرفة
           </h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>
-            <span>إدارة البيانات المعتمدة، الأسئلة الشائعة، والباقات الرسمية</span>
-            <span>•</span>
-            <span>إجمالي السجلات: <strong style={{ color: 'var(--text-primary)' }}>{stats?.total_documents || 0}</strong></span>
-          </div>
         </div>
 
         <button
@@ -361,7 +373,6 @@ export default function KnowledgeBaseTab() {
           <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', marginTop: 4 }}>
             {stats?.sources?.qa || qaList.length || 143} سؤالاً
           </div>
-          <div style={{ fontSize: 12, color: 'var(--text-disabled)', marginTop: 2 }}>محدث ومعتمد</div>
         </div>
 
         <div className="hcn-card" style={{ padding: '16px 20px', borderRight: '4px solid #10B981' }}>
@@ -369,7 +380,6 @@ export default function KnowledgeBaseTab() {
           <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', marginTop: 4 }}>
             {stats?.sources?.company_info || 32} باقة وخدمة
           </div>
-          <div style={{ fontSize: 12, color: 'var(--text-disabled)', marginTop: 2 }}>الأسعار الرسمية</div>
         </div>
 
         <div className="hcn-card" style={{ padding: '16px 20px', borderRight: '4px solid #06B6D4' }}>
@@ -377,15 +387,6 @@ export default function KnowledgeBaseTab() {
           <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', marginTop: 4 }}>
             {pdfList.length || stats?.pdf_count || 6} أدلة PDF
           </div>
-          <div style={{ fontSize: 12, color: 'var(--text-disabled)', marginTop: 2 }}>إعدادات الأجهزة والراوتر</div>
-        </div>
-
-        <div className="hcn-card" style={{ padding: '16px 20px', borderRight: '4px solid #8B5CF6' }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>حالة قاعدة المعرفة</div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: '#10B981', marginTop: 4 }}>
-            متزامنة بالكامل
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--text-disabled)', marginTop: 2 }}>جاهزة للردود الآلية</div>
         </div>
       </div>
 
@@ -1143,8 +1144,8 @@ export default function KnowledgeBaseTab() {
                       width: 36,
                       height: 36,
                       borderRadius: 'var(--radius-sm)',
-                      background: 'rgba(239, 68, 68, 0.1)',
-                      color: '#EF4444',
+                      background: 'rgba(0, 167, 111, 0.1)',
+                      color: 'var(--primary)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -1280,7 +1281,7 @@ export default function KnowledgeBaseTab() {
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4, color: 'var(--text-secondary)' }}>القسم والتصنيف</label>
                 <select
                   className="hcn-input"
-                  style={{ width: '100%', height: 36, fontSize: 13 }}
+                  style={{ width: '100%', minHeight: 40, padding: '8px 12px', fontSize: 13 }}
                   value={formData.category}
                   onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                 >
@@ -1295,7 +1296,7 @@ export default function KnowledgeBaseTab() {
                 <input
                   type="text"
                   className="hcn-input"
-                  style={{ width: '100%', height: 36, fontSize: 13 }}
+                  style={{ width: '100%', minHeight: 40, padding: '8px 12px', fontSize: 13 }}
                   placeholder="أدخل صيغة السؤال..."
                   value={formData.question}
                   onChange={(e) => setFormData({ ...formData, question: e.target.value })}
