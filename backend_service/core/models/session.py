@@ -15,6 +15,7 @@ class Session(Base):
     is_active = Column(Boolean, default=True)
     authed = Column(Boolean, default=False)
     auth_state = Column(String(50), default="UNAUTHENTICATED")
+    user_name = Column(String(200), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

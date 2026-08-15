@@ -32,7 +32,7 @@ class AuthMiddleware(BaseMiddleware):
                 self._backend.context_service.delete_context(rate_limit_id, "auth_blocked_until")
 
         # User is unauthenticated. Check what state they are in.
-        
+
         # State: WAITING_FOR_PHONE
         if session.auth_state == "WAITING_FOR_PHONE":
             if message_text and message_text.startswith("VERIFIED_PHONE:"):
@@ -54,7 +54,7 @@ class AuthMiddleware(BaseMiddleware):
         # State: WAITING_FOR_USERNAME
         if session.auth_state == "WAITING_FOR_USERNAME":
             username = message_text.strip()
-            
+
             # Enforce that the username has one of the allowed domains
             allowed_domains = ["@hyper.sy", "@hypernet.sy", "@mts.sy"]
             if not any(username.endswith(domain) for domain in allowed_domains):
@@ -72,11 +72,10 @@ class AuthMiddleware(BaseMiddleware):
             # Retrieve the saved username and attempts
             context_data = self._backend.context_service.load_context(session.session_id)
             username = context_data.get("temp_auth_username", "")
-            
             rate_limit_id = f"auth_rl_{session.user_id}"
             rate_limit_context = self._backend.context_service.load_context(rate_limit_id)
             attempts = rate_limit_context.get("auth_attempts", 0)
-            
+
             success = self._backend.authentication_service.authenticate_by_credentials(username, password, session.session_id)
             if success:
                 self._backend.context_service.delete_context(session.session_id, "temp_auth_username")
@@ -87,24 +86,24 @@ class AuthMiddleware(BaseMiddleware):
                 attempts += 1
                 self._backend.context_service.save_context(rate_limit_id, "auth_attempts", attempts)
                 self._backend.context_service.delete_context(session.session_id, "temp_auth_username")
-                
+
                 if attempts >= 3:
                     from datetime import datetime, timedelta
                     blocked_until = (datetime.now() + timedelta(minutes=60)).isoformat()
                     self._backend.context_service.save_context(rate_limit_id, "auth_blocked_until", blocked_until)
                     self._backend.session_service.update_session_state(session.session_id, "WAITING_FOR_USERNAME")
-                    
+
                     msg_text = f"بيانات الدخول غير صحيحة. لقد تجاوزت الحد الأقصى للمحاولات. يرجى الانتظار لمدة 60 دقيقة قبل المحاولة مرة أخرى."
                     return ChatResponse(session_id=session.session_id, text=msg_text, intent="auth_blocked", sources_used=["security"])
                 else:
                     self._backend.context_service.save_context(rate_limit_id, "auth_attempts", attempts)
                     self._backend.session_service.update_session_state(session.session_id, "WAITING_FOR_USERNAME")
-                    
+
                     if attempts == 2:
                         msg_text = get_message("auth_failed_retry_username_last_warning", attempt=attempts)
                     else:
                         msg_text = get_message("auth_failed_retry_username", attempt=attempts)
-                        
+
                     return ChatResponse(session_id=session.session_id, text=msg_text, intent="request_credentials", sources_used=["security"])
 
         # If they are UNAUTHENTICATED and just started chatting, prompt for phone

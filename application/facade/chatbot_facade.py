@@ -30,6 +30,11 @@ from application.aspects.tracing_aspect import trace_operation, get_trace_manage
 from application.shared.utils.tracer import trace_step
 from application.middlewares.middleware_pipeline import MiddlewarePipeline
 from application.middlewares.auth_middleware import AuthMiddleware
+from application.permissions.permission_gate import PermissionGate
+from application.shared.exceptions.permission_exceptions import (
+    PermissionDeniedException,
+    AgentEmergencyStopException,
+)
 
 
 class ChatbotFacade:
@@ -60,9 +65,16 @@ class ChatbotFacade:
         self._response_service = ResponseService()
         self._analytics = AnalyticsService()
 
-        # Wire up coordinator with ToolExecutor instead of CRMService
+        # Wire up PermissionGate (Layer 2) using the shared PermissionService
+        self._permission_gate = PermissionGate(self._backend.permission_service)
+
+        # Wire up coordinator with ToolExecutor, ActionLogService, and PermissionGate
         self._coordinator = WorkflowCoordinator(
-            self._rag_service, self._backend.tool_executor, self._llm_service,
+            self._rag_service,
+            self._backend.tool_executor,
+            self._llm_service,
+            self._backend.action_log_service,
+            permission_gate=self._permission_gate,
         )
 
         # Wire agent with LLM for advanced classification
@@ -110,7 +122,16 @@ class ChatbotFacade:
     @track_metrics("handle_message")
     @trace_operation("facade.handle_message")
     @trace_step
-    def handle_message(self, user_id: str, message_text: str, image_bytes: Optional[bytes] = None, image_path: Optional[str] = None, stream_callback: Callable[[str], None] = None) -> ChatResponse:
+    def handle_message(
+        self, 
+        user_id: str, 
+        message_text: str, 
+        user_name: Optional[str] = None,
+        image_bytes: Optional[bytes] = None, 
+        image_path: Optional[str] = None, 
+        stream_callback: Callable = None
+    ):
+    
         """
         Main entry point for an incoming chat message. — the MAIN entry point.
 
@@ -126,7 +147,7 @@ class ChatbotFacade:
         try:
             # 1. Session management via Backend
             t0 = time.time()
-            session = self._backend.session_service.get_or_create_session(user_id)
+            session = self._backend.session_service.get_or_create_session(user_id, user_name=user_name)
             msg_to_save = message_text
             if image_path:
                 import os
@@ -159,6 +180,18 @@ class ChatbotFacade:
             }
             decision = self._agent.analyze(message_text, context)
 
+            # Record Agent Decision Action Log
+            self._backend.action_log_service.log_action(
+                session_id=session.session_id,
+                customer_id=session.customer_id,
+                intent=decision.intent,
+                action_type="INTENT_DECISION",
+                tool_name="intent_classifier",
+                parameters={"requires": decision.requires, "parameters": decision.parameters},
+                status="SUCCESS",
+                result_summary={"confidence": decision.confidence, "reasoning": getattr(decision, 'reasoning', getattr(decision, 'explanation', ''))},
+            )
+
             # Publish intent event
             self._bus.publish(IntentAnalyzedEvent(
                 session_id=session.session_id, decision=decision,
@@ -180,8 +213,15 @@ class ChatbotFacade:
                 decision.parameters["crm_customer_id"] = session.customer_id
                 
             workflow_results = self._coordinator.execute_workflow(
-                decision, message_text, history=history_text, image_bytes=image_bytes, stream_callback=stream_callback
-            )
+            decision,
+            message_text,
+            history=history_text,
+            image_bytes=image_bytes,
+            session_id=session.session_id,
+            customer_id=session.customer_id,
+            stream_callback=stream_callback
+
+
             t_workflow = (time.time() - t2) * 1000
             self._logger.info(f"Step 3 - Workflow Execution Time: {t_workflow:.2f}ms")
 
@@ -218,6 +258,36 @@ class ChatbotFacade:
             )
 
             return response
+
+        except AgentEmergencyStopException:
+            self._logger.critical("[FACADE] Emergency stop active — rejecting message")
+            return ChatResponse.error_response(
+                user_id,
+                "⚠️ النظام موقف مؤقتاً من قِبَل الإدارة. يرجى المحاولة لاحقاً أو التواصل مع الدعم الفني مباشرة.",
+            )
+
+        except PermissionDeniedException as e:
+            self._logger.warning(f"[FACADE] Permission denied: {e}")
+            # Log the denied action for audit trail (internal only)
+            try:
+                self._backend.action_log_service.log_action(
+                    session_id=user_id,
+                    customer_id=None,
+                    intent="PERMISSION_DENIED",
+                    action_type="PERMISSION_DENIED",
+                    tool_name=e.tool_name,
+                    parameters={},
+                    status="DENIED",
+                    result_summary={"reason": e.reason},
+                )
+            except Exception:
+                pass
+            # Generic message — never expose internal tool names to the user
+            return ChatResponse.error_response(
+                user_id,
+                "عذراً، هذه الخدمة متوقفة مؤقتاً. يرجى المحاولة لاحقاً أو التواصل مع فريق الدعم الفني.",
+            )
+
 
         except Exception as e:
             self._logger.exception(f"Error handling message: {e}")

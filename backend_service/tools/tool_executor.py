@@ -5,6 +5,10 @@ import os
 import requests
 import time
 from application.monitoring.logger import AppLogger
+from application.shared.exceptions.permission_exceptions import (
+    PermissionDeniedException,
+    AgentEmergencyStopException,
+)
 
 logger = AppLogger.get_logger("tool_executor")
 CRM_BASE_URL = os.getenv("CRM_BASE_URL", "http://localhost:8090/api/crm")
@@ -13,13 +17,35 @@ from application.shared.utils.tracer import trace_all_methods
 
 @trace_all_methods
 class ToolExecutor:
-    def __init__(self, crm_client=None):
+    def __init__(self, permission_service=None, crm_client=None):
+        self._permission_svc = permission_service
         self._crm_client = crm_client
 
     def execute(self, tool_name: str, parameters: dict, session_id: str = None):
+        # ── LAYER 3: Final hard check before ANY HTTP call ─────────────────
+        if self._permission_svc:
+            if not self._permission_svc.is_allowed("GLOBAL_AGENT"):
+                logger.critical(f"[LAYER 3 BLOCK] GLOBAL_AGENT disabled — '{tool_name}' BLOCKED")
+                raise AgentEmergencyStopException()
+
+            if not self._permission_svc.is_allowed("CRM"):
+                logger.critical(f"[LAYER 3 BLOCK] CRM service disabled — '{tool_name}' BLOCKED")
+                raise PermissionDeniedException(
+                    tool_name="CRM",
+                    reason="All CRM access has been suspended by an administrator."
+                )
+
+            if not self._permission_svc.is_allowed(tool_name):
+                logger.warning(f"[LAYER 3 BLOCK] Tool '{tool_name}' BLOCKED")
+                raise PermissionDeniedException(
+                    tool_name=tool_name,
+                    reason=f"The action '{tool_name}' is currently disabled. Please contact support."
+                )
+        # ──────────────────────────────────────────────────────────────────
+
         logger.info(f"Executing tool {tool_name} with params {parameters}")
         try:
-            customer_id = parameters.get("crm_customer_id")
+            customer_id = parameters.get("crm_customer_id") or parameters.get("customer_id")
             
             if tool_name in ("get_customer_info", "get_balance", "get_current_package", "get_available_packages"):
                 if not customer_id:
@@ -535,9 +561,29 @@ class ToolExecutor:
                     data["ai_business_logic_notes"] = notes
                 
                 return response
+            elif tool_name == "get_invoices":
+                if not customer_id:
+                    return {"success": False, "error": "Customer ID required"}
+                if not self._crm_client:
+                    return {"success": False, "error": "CRMClient not configured"}
+                return self._crm_client.get_user_invoices(customer_id)
+                
+            elif tool_name == "extend_bill":
+                username = parameters.get("username")
+                if not username:
+                    return {"success": False, "error": "Username required"}
+                if not self._crm_client:
+                    return {"success": False, "error": "CRMClient not configured"}
+                return self._crm_client.extend_user_bill(username)
                 
             else:
                 return {"success": False, "error": f"Tool {tool_name} is not implemented yet in ToolExecutor."}
+                
+        except (PermissionDeniedException, AgentEmergencyStopException):
+            raise  # never swallow permission errors
+        except requests.RequestException as e:
+            logger.error(f"CRM API request failed: {e}")
+            return {"success": False, "error": f"Failed to connect to CRM API: {e}"}
         except Exception as e:
             logger.error(f"Tool execution error: {e}")
             return {"success": False, "error": str(e)}

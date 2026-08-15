@@ -220,6 +220,7 @@ class TelegramBot:
             except Exception:
                 pass
             return
+
     async def _handle_message(self, update, context) -> None:
         """Handle incoming text messages — main handler."""
         if update.edited_message:
@@ -360,8 +361,16 @@ class TelegramBot:
                 def stream_callback(chunk):
                     asyncio.run_coroutine_threadsafe(queue.put(chunk), loop)
                     
+                user_name = update.effective_user.first_name or "مستخدم"
                 task = asyncio.create_task(asyncio.to_thread(
-                    self._facade.handle_message, user_id, message_text, image_bytes, image_path, stream_callback
+                    self._facade.handle_message, 
+                    user_id=user_id, 
+                    message_text=message_text, 
+                    user_name=user_name,
+                    image_bytes=image_bytes, 
+                    image_path=image_path,
+                    stream_callback=stream_callback
+                ))
                 ))
                 
                 placeholder_msg = await message.reply_text("⏳...")

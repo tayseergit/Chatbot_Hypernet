@@ -6,7 +6,7 @@ from backend_service.core.database import SessionLocal
 from backend_service.core.models.session import Session as SessionModel
 
 class SessionService:
-    def get_or_create_session(self, user_id: str) -> SessionModel:
+    def get_or_create_session(self, user_id: str, user_name: str = None) -> SessionModel:
         db = SessionLocal()
         try:
             session = db.query(SessionModel).filter(
@@ -15,8 +15,19 @@ class SessionService:
             ).first()
             if not session:
                 session_id = uuid.uuid4().hex
-                session = SessionModel(session_id=session_id, user_id=user_id, is_active=True, authed=False)
+                session = SessionModel(
+                    session_id=session_id, 
+                    user_id=user_id, 
+                    user_name=user_name,
+                    is_active=True, 
+                    authed=False,
+                    auth_state="UNAUTHENTICATED"
+                )
                 db.add(session)
+                db.commit()
+                db.refresh(session)
+            elif user_name and session.user_name != user_name:
+                session.user_name = user_name
                 db.commit()
                 db.refresh(session)
             return session
@@ -69,6 +80,8 @@ class SessionService:
                 new_session = SessionModel(
                     session_id=session_id, 
                     user_id=user_id, 
+                    user_name=old_session.user_name,
+
                     is_active=True, 
                     authed=old_session.authed,
                     auth_state=old_session.auth_state,
@@ -82,3 +95,10 @@ class SessionService:
                 return self.get_or_create_session(user_id)
         finally:
             db.close()
+    def get_all_sessions(self, limit: int = 50):
+        db = SessionLocal()
+        try:
+            return db.query(SessionModel).order_by(SessionModel.created_at.desc()).limit(limit).all()
+        finally:
+            db.close()
+

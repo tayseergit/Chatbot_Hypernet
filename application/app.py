@@ -30,14 +30,16 @@ class Application:
         self._facade: ChatbotFacade = None
 
     def start(self, knowledge_file: str = None, mode: str = "telegram") -> None:
-         
-        self._logger.info("Starting AI ISP Chatbot Platform...")
+        print("\n" + "=" * 60, flush=True)
+        print("  Starting AI ISP Chatbot Platform...", flush=True)
+        print("=" * 60, flush=True)
 
         # Initialize Backend Tier
-        self._logger.info("Initializing Backend Foundation...")
+        print("[APP] Initializing Database & Backend Services...", flush=True)
         self._backend = init_backend(create_schema=False)
 
         # Initialize facade
+        print("[APP] Initializing Chatbot AI & RAG Knowledge Base...", flush=True)
         self._facade = ChatbotFacade(self._config, self._backend)
         self._facade.initialize(knowledge_file)
 
@@ -119,6 +121,7 @@ class Application:
 
 def main():
     """CLI entry point."""
+    print("[BOOT] Booting AI ISP Chatbot Platform...", flush=True)
     import argparse
     parser = argparse.ArgumentParser(description="AI ISP Chatbot Platform")
     parser.add_argument("--mode", choices=["console", "telegram", "api"],
