@@ -371,21 +371,21 @@ export default function KnowledgeBaseTab() {
         <div className="hcn-card" style={{ padding: '16px 20px', borderRight: '4px solid var(--primary)' }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>بنك الأسئلة الشائعة</div>
           <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', marginTop: 4 }}>
-            {stats?.sources?.qa || qaList.length || 143} سؤالاً
+            {stats?.sources?.qa ?? qaList.length ?? 0} سؤالاً
           </div>
         </div>
 
         <div className="hcn-card" style={{ padding: '16px 20px', borderRight: '4px solid #10B981' }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>الباقات والخدمات</div>
           <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', marginTop: 4 }}>
-            {stats?.sources?.company_info || 32} باقة وخدمة
+            {stats?.sources?.company_info ?? 0} باقة وخدمة
           </div>
         </div>
 
         <div className="hcn-card" style={{ padding: '16px 20px', borderRight: '4px solid #06B6D4' }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>الأدلة والكتيبات الفنية</div>
           <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', marginTop: 4 }}>
-            {pdfList.length || stats?.pdf_count || 6} أدلة PDF
+            {stats?.pdf_count ?? pdfList.length ?? 0} أدلة PDF
           </div>
         </div>
       </div>

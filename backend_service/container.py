@@ -27,9 +27,12 @@ class BackendContainer:
         # Seed default permissions into DB on startup (idempotent)
         try:
             self.permission_service.seed_defaults()
+            from backend_service.core.services.admin_auth_service import AdminAuthService
+            self.admin_auth_service = AdminAuthService()
+            self.admin_auth_service.seed_default_admin_if_empty()
         except Exception as e:
             import logging
-            logging.getLogger("container").warning(f"Could not seed permissions: {e}")
+            logging.getLogger("container").warning(f"Could not seed defaults: {e}")
 
         # Tools
         from backend_service.crm.crm_client import CRMClient

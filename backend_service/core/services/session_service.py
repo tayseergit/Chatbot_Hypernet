@@ -6,6 +6,13 @@ from backend_service.core.database import SessionLocal
 from backend_service.core.models.session import Session as SessionModel
 
 class SessionService:
+    def get_session_by_id(self, session_id: str) -> SessionModel:
+        db = SessionLocal()
+        try:
+            return db.query(SessionModel).filter(SessionModel.session_id == session_id).first()
+        finally:
+            db.close()
+
     def get_or_create_session(self, user_id: str, user_name: str = None) -> SessionModel:
         db = SessionLocal()
         try:

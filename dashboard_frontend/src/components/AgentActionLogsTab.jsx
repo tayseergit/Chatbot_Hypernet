@@ -26,7 +26,7 @@ const TYPE_CONFIG = {
     color: '#4F46E5',
     border: 'rgba(79, 70, 229, 0.25)'
   },
-  NOTIFICATION: {
+  BROADCAST_NOTIFICATION: {
     label: 'بث الإشعارات',
     bg: 'rgba(5, 150, 105, 0.12)',
     color: '#059669',
@@ -184,6 +184,7 @@ export default function AgentActionLogsTab() {
               { key: 'CRM_TOOL', label: 'خدمات المشتركين' },
               { key: 'RAG_SEARCH', label: 'قاعدة المعرفة' },
               { key: 'INTENT_DECISION', label: 'تصنيف الطلبات' },
+              { key: 'BROADCAST_NOTIFICATION', label: 'بث الإشعارات' },
             ].map((tab) => {
               const isActive = selectedType === tab.key;
               return (

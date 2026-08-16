@@ -393,15 +393,16 @@ function DetailModal({ cust, onClose, onDelete, requireAuth }) {
               <div className="hcn-card" style={{ padding: 24, display: 'flex', flexDirection: 'column', border: '1px solid var(--border)', boxShadow: 'none' }}>
                 {[
                   { label: 'اسم المشترك (Telegram)', value: cust.user_name || cust.session_id },
+                  { label: 'رقم المشترك (Telegram ID)', value: cust.user_id || 'غير متوفر' },
                   { label: 'معرف الجلسة',             value: cust.session_id },
                   { label: 'معرف العميل (CRM)',       value: cust.customer_id },
                   { label: 'حالة المصادقة',           value: authLabel },
                   { label: 'آخر تفاعل',               value: cust.lastActive },
                   { label: 'تاريخ بدء الجلسة',        value: cust.created_at },
-                ].map((field, i) => (
+                ].map((field, i, arr) => (
                   <div key={field.label} style={{
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '14px 0', borderBottom: i < 5 ? '1px solid var(--border)' : 'none'
+                    padding: '14px 0', borderBottom: i !== arr.length - 1 ? '1px solid var(--border)' : 'none'
                   }}>
                     <span style={{ fontSize: 13, color: 'var(--text-disabled)', fontWeight: 600 }}>{field.label}</span>
                     <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{field.value}</span>

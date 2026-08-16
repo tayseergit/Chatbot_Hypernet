@@ -1,4 +1,4 @@
-# AI ISP Chatbot Platform — Complete Dependencies
+﻿# AI ISP Chatbot Platform — Complete Dependencies
 
 # Core & Web API
 fastapi>=0.110.0
@@ -27,9 +27,6 @@ python-telegram-bot>=20.0
 # Optional Vector & ML
 sentence-transformers>=2.2.0
 chromadb>=0.4.0
-python-dotenv>=1.0.0
 openai-whisper>=20231117
 
-fastapi
-uvicorn
-python-multipart
+PyJWT

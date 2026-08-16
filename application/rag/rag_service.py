@@ -260,10 +260,12 @@ class RAGService:
             except Exception: df = pd.read_csv(file_path)
             new_row = pd.DataFrame([{"category": category, "question": question, "answer": answer}])
             df = pd.concat([df, new_row], ignore_index=True)
-            df.to_excel(file_path, index=False)
+            df.to_excel(file_path, index=False, engine="openpyxl")
             self.initialize(knowledge_file=file_path)
             return True
-        except Exception: return False
+        except Exception as e:
+            self._logger.error(f"Error in add_qa: {e}")
+            return False
 
     def update_qa(self, index: int, category: str, question: str, answer: str) -> bool:
         import pandas as pd
@@ -276,7 +278,7 @@ class RAGService:
                 df.at[index, "category"] = category
                 df.at[index, "question"] = question
                 df.at[index, "answer"] = answer
-                df.to_excel(file_path, index=False)
+                df.to_excel(file_path, index=False, engine="openpyxl")
                 self.initialize(knowledge_file=file_path)
                 return True
             return False
@@ -291,7 +293,7 @@ class RAGService:
             except Exception: df = pd.read_csv(file_path)
             if 0 <= index < len(df):
                 df = df.drop(index).reset_index(drop=True)
-                df.to_excel(file_path, index=False)
+                df.to_excel(file_path, index=False, engine="openpyxl")
                 self.initialize(knowledge_file=file_path)
                 return True
             return False

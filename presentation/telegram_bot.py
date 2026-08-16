@@ -70,9 +70,40 @@ class TelegramBot:
         print("[START] Telegram bot is running! Send messages to your bot.")
         self._app.run_polling()
 
+    async def _check_rate_limit(self, user_id: str, action: str) -> bool:
+        """Check rate limit for presentation layer actions. Returns True if allowed, False if blocked."""
+        import time
+        from application.shared.configuration.app_config import AppConfig
+        
+        config = AppConfig.from_env()
+        max_calls = config.security.pres_max_calls_per_window
+        window_sec = config.security.pres_time_window_seconds
+        
+        context_id = f"pres_rl_{user_id}"
+        context_data = await asyncio.to_thread(self._facade._backend.context_service.load_context, context_id)
+        
+        now_ts = time.time()
+        timestamps = context_data.get("timestamps", [])
+        
+        timestamps = [ts for ts in timestamps if now_ts - ts <= window_sec]
+        
+        if len(timestamps) >= max_calls:
+            self._logger.warning(f"User {user_id} is spamming {action}. Rate limit applied.")
+            return False
+            
+        timestamps.append(now_ts)
+        await asyncio.to_thread(self._facade._backend.context_service.save_context, context_id, "timestamps", timestamps)
+        
+        self._logger.info(f"User {user_id} triggered {action}.")
+        return True
+
     async def _handle_start(self, update, context) -> None:
         """Handle /start command."""
         user_id = str(update.effective_user.id)
+        
+        if not await self._check_rate_limit(user_id, "/start command"):
+            return
+
         welcome = (
             "مرحباً بك في مساعد خدمات الإنترنت!\n\n"
             "أنا هنا لمساعدتك في:\n"
@@ -86,6 +117,9 @@ class TelegramBot:
     async def _handle_logout(self, update, context) -> None:
         """Handle /logout command."""
         user_id = str(update.effective_user.id)
+        if not await self._check_rate_limit(user_id, "/logout command"):
+            return
+        
         response_msg = await asyncio.to_thread(self._facade.logout_user, user_id)
         from telegram import ReplyKeyboardRemove
         await update.message.reply_text(response_msg, reply_markup=ReplyKeyboardRemove())
@@ -93,6 +127,9 @@ class TelegramBot:
     async def _handle_new(self, update, context) -> None:
         """Handle /new command to reset chat history context."""
         user_id = str(update.effective_user.id)
+        if not await self._check_rate_limit(user_id, "/new command"):
+            return
+            
         response_msg = await asyncio.to_thread(self._facade.reset_history, user_id)
         from telegram import ReplyKeyboardRemove
         await update.message.reply_text(response_msg, reply_markup=ReplyKeyboardRemove())
@@ -105,6 +142,10 @@ class TelegramBot:
         
         if action_data == "ignore":
             await query.answer()
+            return
+            
+        if not await self._check_rate_limit(user_id, f"callback query {action_data}"):
+            await query.answer("يرجى الانتظار، أنت ترسل طلبات بسرعة كبيرة!")
             return
             
         if action_data == "req_extend_bill":
@@ -361,7 +402,14 @@ class TelegramBot:
                 def stream_callback(chunk):
                     asyncio.run_coroutine_threadsafe(queue.put(chunk), loop)
                     
-                user_name = update.effective_user.first_name or "مستخدم"
+                u = update.effective_user
+                first = u.first_name or ""
+                last = u.last_name or ""
+                uname = f" (@{u.username})" if u.username else ""
+                full_name = f"{first} {last}".strip()
+                if not full_name:
+                    full_name = "مستخدم"
+                user_name = f"{full_name}{uname}"
                 task = asyncio.create_task(asyncio.to_thread(
                     self._facade.handle_message, 
                     user_id=user_id, 
@@ -370,7 +418,6 @@ class TelegramBot:
                     image_bytes=image_bytes, 
                     image_path=image_path,
                     stream_callback=stream_callback
-                ))
                 ))
                 
                 placeholder_msg = await message.reply_text("⏳...")

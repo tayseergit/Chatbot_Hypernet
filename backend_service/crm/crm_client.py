@@ -266,7 +266,18 @@ class CRMClient:
             "packages_amount", "adsl_monthes", "total_extends", "total_amount", 
             "is_overdue", "discount_type", "discount_amount", "final_amount"
         ]
-        return self.post(url, payload, allowed_fields=allowed)
+        
+        response = self.post(url, payload)
+        
+        if response.get("success") and "data" in response:
+            original_data = response["data"]
+            if isinstance(original_data, dict):
+                actual_data = original_data.get("data", original_data)
+                if isinstance(actual_data, dict):
+                    filtered_data = {k: v for k, v in actual_data.items() if k in allowed}
+                    return {"success": True, "data": filtered_data}
+        
+        return response
 
     def activate_package(self, customer_id: str, package_id: int) -> Dict[str, Any]:
         """Activate a package for a user (loan or paid)."""

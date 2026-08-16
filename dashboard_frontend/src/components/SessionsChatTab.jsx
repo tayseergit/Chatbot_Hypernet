@@ -289,8 +289,15 @@ export default function SessionsChatTab() {
                         <User size={20} color={isAuth ? 'var(--success)' : 'var(--text-secondary)'} />
                       </div>
                       <div>
-                        <div style={{ fontWeight: 700, fontSize: 14, fontFamily: 'monospace' }}>
-                          {s.user_name || s.session_id}
+                        <div style={{ fontWeight: 700, fontSize: 14, fontFamily: 'monospace', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {(s.user_name && s.user_name !== s.session_id) ? (
+                            s.user_name.includes(' (@') ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
+                                <span>{s.user_name.split(' (@')[0]}</span>
+                                <span style={{ fontSize: 12, color: 'var(--text-disabled)' }}>@{s.user_name.split(' (@')[1].replace(')', '')}</span>
+                              </div>
+                            ) : s.user_name
+                          ) : (s.user_id || s.session_id)}
                         </div>
                         <div style={{ fontSize: 12, color: 'var(--text-disabled)', marginTop: 2 }}>
                           {s.customer_id !== 'غير مرتبط' ? `حساب: ${s.customer_id}` : 'مستخدم زائر'}
@@ -317,9 +324,13 @@ export default function SessionsChatTab() {
               </div>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ fontWeight: 700, fontSize: 16 }}>{activeSession.user_name || activeSession.session_id}</span>
-                  <span style={{ fontSize: 12, color: 'var(--text-disabled)', fontFamily: 'monospace' }}>
-                    ID: {activeSession.session_id}
+                  <span style={{ fontWeight: 700, fontSize: 16 }}>
+                    {(activeSession.user_name && activeSession.user_name !== activeSession.session_id) 
+                      ? activeSession.user_name 
+                      : (activeSession.user_id || 'مستخدم زائر (Web)')}
+                  </span>
+                  <span style={{ fontSize: 12, color: 'var(--text-disabled)', fontFamily: 'monospace', background: 'var(--bg-hover)', padding: '2px 6px', borderRadius: 4 }}>
+                    ID: {activeSession.user_id || (activeSession.session_id.length > 20 ? `${activeSession.session_id.substring(0,8)}...` : activeSession.session_id)}
                   </span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, fontSize: 13 }}>

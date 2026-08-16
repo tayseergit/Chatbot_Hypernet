@@ -513,10 +513,23 @@ class ToolExecutor:
                 return self._crm_client.get_user_sessions(customer_id, limit)
             elif tool_name == "get_invoice_amount":
                 username = parameters.get("username")
-                if not username:
-                    return {"success": False, "error": "Username required for invoice amount"}
+                customer_id = parameters.get("customer_id") or parameters.get("crm_customer_id")
+                
                 if not self._crm_client:
                     return {"success": False, "error": "CRMClient not configured"}
+                    
+                if not username and customer_id:
+                    # Try to fetch username using customer_id
+                    url = f"{self._crm_client._auth_manager._base_url}/users/overview/{customer_id}"
+                    overview_res = self._crm_client.get(url)
+                    if overview_res.get("success") and "data" in overview_res:
+                        data_obj = overview_res.get("data")
+                        actual_data = data_obj.get("data", data_obj) if isinstance(data_obj, dict) else data_obj
+                        if isinstance(actual_data, dict):
+                            username = actual_data.get("username")
+                            
+                if not username:
+                    return {"success": False, "error": "Username could not be determined for invoice amount"}
                 
                 response = self._crm_client.get_invoice_amount(username)
                 

@@ -117,6 +117,8 @@ class SecurityConfig:
     spam_max_calls_per_window: int = 10
     spam_time_window_seconds: int = 20
     spam_block_duration_minutes: int = 5
+    pres_max_calls_per_window: int = 10
+    pres_time_window_seconds: int = 60
     max_images_per_month: int = 15
     max_voices_per_month: int = 50
     max_messages_per_month: int = 200
@@ -227,6 +229,8 @@ class AppConfig:
         config.security.spam_max_calls_per_window = int(os.getenv("SPAM_MAX_CALLS", config.security.spam_max_calls_per_window))
         config.security.spam_time_window_seconds = int(os.getenv("SPAM_WINDOW_SECONDS", config.security.spam_time_window_seconds))
         config.security.spam_block_duration_minutes = int(os.getenv("SPAM_BLOCK_MINUTES", config.security.spam_block_duration_minutes))
+        config.security.pres_max_calls_per_window = int(os.getenv("PRES_MAX_CALLS", config.security.pres_max_calls_per_window))
+        config.security.pres_time_window_seconds = int(os.getenv("PRES_WINDOW_SECONDS", config.security.pres_time_window_seconds))
         config.security.max_images_per_month = int(os.getenv("MAX_IMAGES_PER_MONTH", config.security.max_images_per_month))
         config.security.max_voices_per_month = int(os.getenv("MAX_VOICES_PER_MONTH", config.security.max_voices_per_month))
         config.security.max_messages_per_month = int(os.getenv("MAX_MESSAGES_PER_MONTH", config.security.max_messages_per_month))
