@@ -31,6 +31,18 @@ const TYPE_CONFIG = {
     bg: 'rgba(5, 150, 105, 0.12)',
     color: '#059669',
     border: 'rgba(5, 150, 105, 0.25)'
+  },
+  PERMISSION_DENIED: {
+    label: 'محاولة مرفوضة',
+    bg: 'rgba(239, 68, 68, 0.12)',
+    color: '#EF4444',
+    border: 'rgba(239, 68, 68, 0.25)'
+  },
+  LLM_GENERATION: {
+    label: 'توليد الردود',
+    bg: 'rgba(14, 165, 233, 0.12)',
+    color: '#0EA5E9',
+    border: 'rgba(14, 165, 233, 0.25)'
   }
 };
 
@@ -48,7 +60,7 @@ export default function AgentActionLogsTab() {
   const fetchLogs = async () => {
     setLoading(true);
     try {
-      let url = `${API}/api/actions?action_type=${selectedType}&status=${selectedStatus}&limit=100`;
+      let url = `${API}/api/actions?action_type=${selectedType}&status=${selectedStatus}&limit=10000`;
       if (searchTerm.trim()) {
         url += `&search=${encodeURIComponent(searchTerm.trim())}`;
       }
@@ -79,7 +91,8 @@ export default function AgentActionLogsTab() {
     let csv = 'التاريخ والوقت,رقم الجلسة,المشترك,نوع العملية,الإجراء المنفذ,التصنيف,الحالة\n';
     logs.forEach(l => {
       const typeLabel = TYPE_CONFIG[l.type]?.label || l.type;
-      const statusLabel = (l.status || '').toUpperCase() === 'SUCCESS' ? 'ناجحة' : 'غير مكتملة';
+      const statusUpper = (l.status || '').toUpperCase();
+      const statusLabel = statusUpper === 'SUCCESS' ? 'ناجحة' : (statusUpper === 'DENIED' ? 'مرفوضة' : 'فاشلة');
       csv += `"${l.timestamp}","${l.sessionId}","${l.customerId}","${typeLabel}","${l.tool}","${l.intent}","${statusLabel}"\n`;
     });
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
@@ -184,7 +197,9 @@ export default function AgentActionLogsTab() {
               { key: 'CRM_TOOL', label: 'خدمات المشتركين' },
               { key: 'RAG_SEARCH', label: 'قاعدة المعرفة' },
               { key: 'INTENT_DECISION', label: 'تصنيف الطلبات' },
+              { key: 'LLM_GENERATION', label: 'توليد الردود' },
               { key: 'BROADCAST_NOTIFICATION', label: 'بث الإشعارات' },
+              { key: 'PERMISSION_DENIED', label: 'محاولات مرفوضة' },
             ].map((tab) => {
               const isActive = selectedType === tab.key;
               return (
@@ -233,7 +248,8 @@ export default function AgentActionLogsTab() {
             >
               <option value="ALL">كافة الحالات</option>
               <option value="SUCCESS">عمليات ناجحة</option>
-              <option value="FAILED">عمليات غير مكتملة</option>
+              <option value="FAILED">عمليات فاشلة</option>
+              <option value="DENIED">عمليات مرفوضة</option>
             </select>
 
             {/* حقل البحث */}
@@ -288,10 +304,15 @@ export default function AgentActionLogsTab() {
                       <td style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
                         {log.timestamp}
                       </td>
-                      <td style={{ wordBreak: 'break-all' }}>
+                      <td style={{ wordBreak: 'break-all', display: 'flex', flexDirection: 'column', gap: 2 }}>
                         <span style={{ color: 'var(--info)', fontWeight: 600, fontFamily: 'monospace', fontSize: 12 }}>
                           {log.sessionId}
                         </span>
+                        {log.tgId && (
+                          <span style={{ color: 'var(--primary)', fontFamily: 'monospace', fontSize: 11, opacity: 0.8 }}>
+                            TG: {log.tgId}
+                          </span>
+                        )}
                       </td>
                       <td style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13, wordBreak: 'break-word' }}>
                         {log.customerId}
@@ -319,12 +340,12 @@ export default function AgentActionLogsTab() {
                       </td>
                       <td style={{ textAlign: 'center' }}>
                         <span className="hcn-badge" style={{
-                          background: isSuccess ? 'var(--success-bg)' : 'var(--error-bg)',
-                          color: isSuccess ? 'var(--success)' : 'var(--error)',
+                          background: isSuccess ? 'var(--success-bg)' : ((log.status || '').toUpperCase() === 'DENIED' ? 'rgba(239, 68, 68, 0.15)' : 'var(--error-bg)'),
+                          color: isSuccess ? 'var(--success)' : ((log.status || '').toUpperCase() === 'DENIED' ? '#EF4444' : 'var(--error)'),
                           fontSize: 11,
                           fontWeight: 600
                         }}>
-                          {isSuccess ? 'ناجحة' : 'فشلت'}
+                          {isSuccess ? 'ناجحة' : ((log.status || '').toUpperCase() === 'DENIED' ? 'مرفوضة' : 'فشلت')}
                         </span>
                       </td>
                       <td style={{ textAlign: 'center' }}>
@@ -431,17 +452,18 @@ export default function AgentActionLogsTab() {
                 <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
                   مدخلات ومعاملات الطلب:
                 </div>
-                <pre style={{
+                <pre dir="ltr" style={{
                   background: 'var(--bg-paper)',
                   border: '1px solid var(--border-color)',
                   borderRadius: 'var(--radius-sm)',
                   padding: 12,
-                  fontFamily: 'inherit',
+                  fontFamily: 'monospace',
                   fontSize: 12,
                   color: 'var(--text-primary)',
                   overflowX: 'auto',
                   margin: 0,
-                  lineHeight: 1.5
+                  lineHeight: 1.5,
+                  textAlign: 'left'
                 }}>
                   {JSON.stringify(activeModalLog.params, null, 2)}
                 </pre>
@@ -451,17 +473,18 @@ export default function AgentActionLogsTab() {
                 <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
                   استجابة النظام والنتيجة:
                 </div>
-                <pre style={{
+                <pre dir="ltr" style={{
                   background: 'var(--bg-paper)',
                   border: '1px solid var(--border-color)',
                   borderRadius: 'var(--radius-sm)',
                   padding: 12,
-                  fontFamily: 'inherit',
+                  fontFamily: 'monospace',
                   fontSize: 12,
                   color: 'var(--success)',
                   overflowX: 'auto',
                   margin: 0,
-                  lineHeight: 1.5
+                  lineHeight: 1.5,
+                  textAlign: 'left'
                 }}>
                   {JSON.stringify(activeModalLog.result, null, 2)}
                 </pre>

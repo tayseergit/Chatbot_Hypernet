@@ -54,7 +54,16 @@ class TelegramBot:
             ]
             await application.bot.set_my_commands(commands)
 
-        self._app = ApplicationBuilder().token(self._token).post_init(post_init).build()
+        self._app = (
+            ApplicationBuilder()
+            .token(self._token)
+            .read_timeout(30)
+            .write_timeout(30)
+            .connect_timeout(30)
+            .pool_timeout(30)
+            .post_init(post_init)
+            .build()
+        )
 
         # Register handlers
         self._app.add_handler(CommandHandler("start", self._handle_start))
@@ -64,11 +73,21 @@ class TelegramBot:
         self._app.add_handler(
             MessageHandler((filters.TEXT | filters.CONTACT | filters.PHOTO | filters.VOICE | filters.AUDIO) & ~filters.COMMAND, self._handle_message)
         )
+        
+        # Add error handler to prevent crashing on Network Errors
+        async def error_handler(update, context):
+            from telegram.error import NetworkError
+            if isinstance(context.error, NetworkError):
+                self._logger.warning(f"Telegram NetworkError (harmless, retrying...): {context.error}")
+                return
+            self._logger.error(f"Telegram bot error: {context.error}")
+            
+        self._app.add_error_handler(error_handler)
         # Commands menu is now set in post_init
 
         self._logger.info("Telegram bot started — polling for messages...")
         print("[START] Telegram bot is running! Send messages to your bot.")
-        self._app.run_polling()
+        self._app.run_polling(stop_signals=None)
 
     async def _check_rate_limit(self, user_id: str, action: str) -> bool:
         """Check rate limit for presentation layer actions. Returns True if allowed, False if blocked."""

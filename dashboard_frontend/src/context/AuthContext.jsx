@@ -11,7 +11,18 @@ export function AuthProvider({ children }) {
   const [admin, setAdmin] = useState(() => {
     try {
       const saved = localStorage.getItem(ADMIN_KEY);
-      return saved ? JSON.parse(saved) : null;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Force re-login if the stored admin object is from an older version (missing permissions)
+        if (!parsed.permissions) {
+          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(ADMIN_KEY);
+          localStorage.removeItem(EXPIRES_KEY);
+          return null;
+        }
+        return parsed;
+      }
+      return null;
     } catch {
       return null;
     }
@@ -167,6 +178,10 @@ export function AuthProvider({ children }) {
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
+  const hasPermission = useCallback((permId) => {
+    return admin?.permissions?.includes(permId) || false;
+  }, [admin]);
+
   const value = {
     token,
     admin,
@@ -174,6 +189,7 @@ export function AuthProvider({ children }) {
     isLoading,
     login,
     logout,
+    hasPermission,
     remainingSeconds,
     remainingFormatted: formatRemainingTime(),
   };

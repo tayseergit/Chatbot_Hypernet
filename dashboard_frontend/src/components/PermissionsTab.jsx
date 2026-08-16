@@ -86,8 +86,6 @@ export default function PermissionsTab() {
   const [permissions, setPermissions]         = useState([]);
   const [loading, setLoading]                 = useState(true);
   const [toggling, setToggling]               = useState(null);
-  const [emergencyActive, setEmergencyActive] = useState(false);
-  const [emergencyLoading, setEmergencyLoading] = useState(false);
   const [toast, setToast]                     = useState(null);
   const [lastRefresh, setLastRefresh]         = useState(null);
 
@@ -104,8 +102,6 @@ export default function PermissionsTab() {
       if (!res.ok) throw new Error('API error');
       const data = await res.json();
       setPermissions(data);
-      const global = data.find(p => p.tool_name === 'GLOBAL_AGENT');
-      if (global) setEmergencyActive(!global.is_enabled);
       setLastRefresh(new Date().toLocaleTimeString('ar-IQ'));
     } catch {
       showToast('تعذّر تحميل الصلاحيات. تأكد من تشغيل الخادم.', 'error');
@@ -124,13 +120,6 @@ export default function PermissionsTab() {
     );
   };
 
-  const requestEmergencyStop = () => {
-    if (emergencyLoading) return;
-    requireAuth(
-      emergencyActive ? 'استئناف النظام' : 'تفعيل الإيقاف الطارئ لجميع العمليات',
-      (adminUsername) => executeEmergencyStop(adminUsername)
-    );
-  };
 
   const executeToggle = async (perm, adminUsername) => {
     setToggling(perm.tool_name);
@@ -151,25 +140,6 @@ export default function PermissionsTab() {
     }
   };
 
-  const executeEmergencyStop = async (adminUsername) => {
-    const activate = !emergencyActive;
-    setEmergencyLoading(true);
-    try {
-      const res = await fetch(`${API}/permissions/emergency-stop`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ activate, updated_by: adminUsername }),
-      });
-      if (!res.ok) throw new Error('فشل الطلب');
-      setEmergencyActive(activate);
-      await fetchPermissions();
-      showToast(activate ? 'إيقاف الطوارئ مفعّل — جميع العمليات متوقفة' : 'تم استئناف النظام بشكل طبيعي', activate ? 'error' : 'success');
-    } catch {
-      showToast('فشل طلب إيقاف الطوارئ', 'error');
-    } finally {
-      setEmergencyLoading(false);
-    }
-  };
 
   const grouped = permissions.reduce((acc, p) => {
     const cat = p.category || 'CRM_TOOL';
@@ -213,51 +183,32 @@ export default function PermissionsTab() {
           </h1>
           <div style={{ fontSize: 14, color: '#757575', marginTop: 4 }}>لوحة تحكم النظام - إدارة أمان العمليات</div>
         </div>
-        <button onClick={fetchPermissions} style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: '8px 16px', background: '#f5f5f5', border: '1px solid #e0e0e0', borderRadius: 4,
-          color: '#424242', cursor: 'pointer', fontWeight: 600, fontSize: 14
-        }}>
-          <RefreshCw size={16} /> تحديث
-        </button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            onClick={async () => {
+              const res = await fetch(`${API}/api/cache/clear`, { method: 'POST' });
+              const data = await res.json();
+              if (res.ok) alert(data.message);
+              else alert('فشل مسح البيانات المؤقتة');
+            }}
+            style={{ 
+              background: '#f43f5e', color: 'white', border: 'none', borderRadius: 4,
+              padding: '8px 16px', fontWeight: 600, fontSize: 14,
+              display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer'
+            }}
+          >
+            مسح البيانات المؤقتة
+          </button>
+          <button onClick={fetchPermissions} style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '8px 16px', background: '#f5f5f5', border: '1px solid #e0e0e0', borderRadius: 4,
+            color: '#424242', cursor: 'pointer', fontWeight: 600, fontSize: 14
+          }}>
+            <RefreshCw size={16} /> تحديث
+          </button>
+        </div>
       </div>
 
-      {/* ── بانر إيقاف الطوارئ ── */}
-      <div style={{ 
-        padding: 24, 
-        background: emergencyActive ? '#ffebee' : '#ffffff', 
-        border: `1px solid ${emergencyActive ? '#d32f2f' : '#e0e0e0'}`, 
-        borderRadius: 4,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div>
-            <div style={{ fontWeight: 'bold', fontSize: 18, color: emergencyActive ? '#d32f2f' : '#212121', marginBottom: 4 }}>
-              {emergencyActive ? 'النظام في حالة توقف طارئ' : 'التحكم العام (إيقاف الطوارئ)'}
-            </div>
-            <div style={{ fontSize: 14, color: '#616161' }}>
-              {emergencyActive
-                ? 'جميع عمليات النظام متوقفة حالياً.'
-                : 'يوقف جميع عمليات النظام فوراً. يقتصر استخدامه على الحالات الأمنية والتقنية الحرجة.'}
-            </div>
-          </div>
-        </div>
-        <button
-          onClick={requestEmergencyStop}
-          disabled={emergencyLoading}
-          style={{
-            padding: '10px 24px', borderRadius: 4, border: 'none',
-            cursor: emergencyLoading ? 'not-allowed' : 'pointer',
-            fontWeight: 'bold', fontSize: 14, fontFamily: 'inherit',
-            background: emergencyActive ? '#2e7d32' : '#d32f2f',
-            color: '#fff',
-            opacity: emergencyLoading ? 0.7 : 1, transition: 'all 0.2s',
-          }}
-        >
-          {emergencyLoading ? 'جارٍ التنفيذ...' : emergencyActive ? 'استئناف النظام' : 'تفعيل إيقاف الطوارئ'}
-        </button>
-      </div>
 
       {/* ── قائمة الصلاحيات ── */}
       {loading ? (
@@ -294,13 +245,7 @@ export default function PermissionsTab() {
         })
       )}
 
-      {/* ── معلومات التطبيق ── */}
-      <div style={{ padding: 24, borderRadius: 4, background: '#f5f5f5', border: '1px solid #e0e0e0', marginTop: 16 }}>
-        <div style={{ fontWeight: 'bold', color: '#424242', marginBottom: 8, fontSize: 15 }}>ملاحظات النظام الفنية</div>
-        <div style={{ fontSize: 13, color: '#616161', lineHeight: 1.8 }}>
-          يتم تطبيق التعديلات بشكل فوري على مستوى قاعدة البيانات. نظراً لوجود طبقات تخزين مؤقت (Caching)، قد تستغرق التغييرات فترة تصل إلى 30 ثانية لتنعكس على جميع طبقات الخدمة بشكل كامل. يتم تسجيل اسم المسؤول وتوقيت الإجراء للتدقيق الأمني.
-        </div>
-      </div>
+
     </div>
   );
 }

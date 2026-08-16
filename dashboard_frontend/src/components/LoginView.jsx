@@ -177,7 +177,7 @@ function LabeledInput({ label, type, value, onChange, onKeyDown, onKeyUp, disabl
 }
 
 /* ─────────────────────────────────── Main Component ────────────────────────────────────────── */
-export default function LoginView() {
+export default function LoginView({ onGoToPlayground }) {
   const { login } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -279,7 +279,7 @@ export default function LoginView() {
                 letterSpacing: '-0.3px',
               }}
             >
-              تسجيل الدخول للنظام
+              تسجيل الدخول
             </h1>
 
             {errorMsg && (

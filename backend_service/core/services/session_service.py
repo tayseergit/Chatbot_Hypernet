@@ -22,21 +22,28 @@ class SessionService:
             ).first()
             if not session:
                 session_id = uuid.uuid4().hex
+                is_playground = user_id.startswith("playground_admin_")
                 session = SessionModel(
                     session_id=session_id, 
                     user_id=user_id, 
                     user_name=user_name,
                     is_active=True, 
-                    authed=False,
-                    auth_state="UNAUTHENTICATED"
+                    authed=is_playground,
+                    auth_state="AUTHENTICATED" if is_playground else "UNAUTHENTICATED"
                 )
                 db.add(session)
                 db.commit()
                 db.refresh(session)
-            elif user_name and session.user_name != user_name:
-                session.user_name = user_name
-                db.commit()
-                db.refresh(session)
+            else:
+                if user_id.startswith("playground_admin_") and not session.authed:
+                    session.authed = True
+                    session.auth_state = "AUTHENTICATED"
+                    db.commit()
+                    db.refresh(session)
+                elif user_name and session.user_name != user_name:
+                    session.user_name = user_name
+                    db.commit()
+                    db.refresh(session)
             return session
         finally:
             db.close()
@@ -54,6 +61,14 @@ class SessionService:
                 db.commit()
                 db.refresh(session)
             return session
+        finally:
+            db.close()
+
+    def deactivate_user_sessions(self, user_id: str):
+        db = SessionLocal()
+        try:
+            db.query(SessionModel).filter(SessionModel.user_id == user_id, SessionModel.is_active == True).update({"is_active": False})
+            db.commit()
         finally:
             db.close()
 

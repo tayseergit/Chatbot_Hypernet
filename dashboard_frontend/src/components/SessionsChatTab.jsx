@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MessageSquare, Search, Eye, User, Cpu, RefreshCw, Send, ZoomIn, Image as ImageIcon } from 'lucide-react';
+import { MessageSquare, Search, Eye, User, Cpu, RefreshCw, Send, ZoomIn, Image as ImageIcon, AlertCircle } from 'lucide-react';
 import { usePasswordAuth, PasswordPromptModal } from './PasswordPromptModal';
+import ConfirmModal from './ConfirmModal';
+import { useAuth } from '../context/AuthContext';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -18,10 +20,12 @@ export default function SessionsChatTab() {
   const [filterAuth, setFilterAuth] = useState('ALL');
   const [replyText, setReplyText] = useState('');
   const [sendingReply, setSendingReply] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
   const chatEndRef = useRef(null);
 
   const { requireAuth, modalProps } = usePasswordAuth();
+  const { hasPermission } = useAuth();
 
   // Persist session selection
   const selectSession = (id) => {
@@ -43,6 +47,10 @@ export default function SessionsChatTab() {
     fetch(`${API_BASE}/api/crm/customers`)
       .then((res) => res.json())
       .then((data) => {
+        if (!Array.isArray(data)) {
+          console.error('API returned non-array:', data);
+          data = [];
+        }
         setSessions(data);
         setLoading(false);
         // Only auto-select if no session was previously saved
@@ -95,26 +103,28 @@ export default function SessionsChatTab() {
     }
   }, [messages, selectedSessionId]);
 
-  const handleSendReply = async () => {
+  const handleSendReply = () => {
     if (!replyText.trim() || sendingReply || !selectedSessionId) return;
-    requireAuth('إرسال رد للمشترك', async () => {
-      setSendingReply(true);
-      try {
-        const res = await fetch(`${API_BASE}/api/sessions/${selectedSessionId}/reply`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: replyText.trim() })
-        });
-        if (res.ok) {
-          setReplyText('');
-          fetchMsgs();
-        }
-      } catch (err) {
-        console.error('Failed to send reply:', err);
-      } finally {
-        setSendingReply(false);
+    setShowConfirm(true);
+  };
+
+  const executeSendReply = async () => {
+    setSendingReply(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/sessions/${selectedSessionId}/reply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: replyText.trim() })
+      });
+      if (res.ok) {
+        setReplyText('');
+        fetchMsgs();
       }
-    });
+    } catch (err) {
+      console.error('Failed to send reply:', err);
+    } finally {
+      setSendingReply(false);
+    }
   };
 
   // Helper to render message content (Text or Photo)
@@ -127,21 +137,21 @@ export default function SessionsChatTab() {
 
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div 
+          <div
             onClick={() => setPreviewImage(fullUrl)}
-            style={{ 
-              position: 'relative', 
-              borderRadius: 12, 
-              overflow: 'hidden', 
+            style={{
+              position: 'relative',
+              borderRadius: 12,
+              overflow: 'hidden',
               cursor: 'pointer',
               border: '2px solid rgba(255,255,255,0.2)',
               maxWidth: 280,
               maxHeight: 220
             }}
           >
-            <img 
-              src={fullUrl} 
-              alt="User Upload" 
+            <img
+              src={fullUrl}
+              alt="User Upload"
               style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
               onError={(e) => { e.target.style.display = 'none'; }}
             />
@@ -173,6 +183,9 @@ export default function SessionsChatTab() {
   const isAuthed = activeSession.auth_state === 'AUTHENTICATED' || activeSession.authenticated;
 
   const filteredSessions = sessions.filter((s) => {
+    // Hide playground testing sessions from live chats
+    if (s.is_playground) return false;
+
     const sId = (s.session_id || '').toLowerCase();
     const cId = (s.customer_id || '').toLowerCase();
     const q = searchTerm.toLowerCase();
@@ -190,6 +203,18 @@ export default function SessionsChatTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 32, height: 'calc(100vh - 64px)' }}>
       <PasswordPromptModal {...modalProps} />
+
+      {/* Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showConfirm}
+        title="تأكيد إرسال الرد"
+        message="هل أنت متأكد من إرسال هذا الرد للمشترك عبر تيليجرام؟"
+        type="primary"
+        confirmText="تأكيد الإرسال"
+        onConfirm={() => { setShowConfirm(false); executeSendReply(); }}
+        onCancel={() => setShowConfirm(false)}
+      />
+
       {/* ── رأس الصفحة ── */}
       <div
         className="hcn-page-header"
@@ -198,7 +223,7 @@ export default function SessionsChatTab() {
         <div>
           <h1 className="hcn-title" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
             مراقبة المحادثات والرد المباشر
-            <span className="hcn-badge hcn-badge-success">حي ومباشر</span>
+            <span className="hcn-dot hcn-dot-green hcn-dot-pulse"></span>
           </h1>
         </div>
         <div style={{ display: 'flex', gap: 16 }}>
@@ -266,7 +291,7 @@ export default function SessionsChatTab() {
                       padding: 16,
                       borderRadius: 12,
                       border: `1px solid ${isSelected ? 'var(--primary)' : 'var(--border)'}`,
-                      background: isSelected ? 'var(--primary-light, rgba(0, 102, 255, 0.06))' : 'var(--bg-paper)',
+                      background: isSelected ? 'rgba(0, 167, 111, 0.08)' : 'var(--bg-paper)',
                       cursor: 'pointer',
                       transition: 'all 0.15s ease',
                       display: 'flex',
@@ -294,7 +319,7 @@ export default function SessionsChatTab() {
                             s.user_name.includes(' (@') ? (
                               <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
                                 <span>{s.user_name.split(' (@')[0]}</span>
-                                <span style={{ fontSize: 12, color: 'var(--text-disabled)' }}>@{s.user_name.split(' (@')[1].replace(')', '')}</span>
+                                <span style={{ fontSize: 12, color: 'var(--text-disabled)' }}>{'\u200E'}@{s.user_name.split(' (@')[1].replace(')', '')}</span>
                               </div>
                             ) : s.user_name
                           ) : (s.user_id || s.session_id)}
@@ -325,12 +350,12 @@ export default function SessionsChatTab() {
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <span style={{ fontWeight: 700, fontSize: 16 }}>
-                    {(activeSession.user_name && activeSession.user_name !== activeSession.session_id) 
-                      ? activeSession.user_name 
+                    {(activeSession.user_name && activeSession.user_name !== activeSession.session_id)
+                      ? activeSession.user_name
                       : (activeSession.user_id || 'مستخدم زائر (Web)')}
                   </span>
                   <span style={{ fontSize: 12, color: 'var(--text-disabled)', fontFamily: 'monospace', background: 'var(--bg-hover)', padding: '2px 6px', borderRadius: 4 }}>
-                    ID: {activeSession.user_id || (activeSession.session_id.length > 20 ? `${activeSession.session_id.substring(0,8)}...` : activeSession.session_id)}
+                    ID: {activeSession.user_id || (activeSession.session_id.length > 20 ? `${activeSession.session_id.substring(0, 8)}...` : activeSession.session_id)}
                   </span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, fontSize: 13 }}>
@@ -372,10 +397,10 @@ export default function SessionsChatTab() {
                   >
                     <div
                       style={{
-                        background: isUser 
-                          ? 'var(--primary)' 
-                          : isAdmin 
-                            ? '#4F46E5' 
+                        background: isUser
+                          ? 'var(--primary)'
+                          : isAdmin
+                            ? '#4F46E5'
                             : 'var(--bg-paper)',
                         color: (isUser || isAdmin) ? '#fff' : 'var(--text-primary)',
                         padding: '12px 18px',
@@ -392,7 +417,7 @@ export default function SessionsChatTab() {
                       {renderMessageContent(msg.text, isUser)}
                     </div>
                     <span style={{ fontSize: 11, color: 'var(--text-disabled)', marginTop: 4, padding: '0 4px' }}>
-                      {msg.time} • {isUser ? 'المشترك' : isAdmin ? 'الدعم الفني (لوحة التحكم)' : 'المساعد الذكي'}
+                      {msg.time} • {isUser ? (activeSession?.is_playground ? 'مدير النظام (مختبر)' : 'المشترك') : isAdmin ? 'الدعم الفني (لوحة التحكم)' : 'المساعد الذكي'}
                     </span>
                   </div>
                 );
@@ -402,35 +427,37 @@ export default function SessionsChatTab() {
           </div>
 
           {/* ── شريط الرد اليدوي ── */}
-          <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', background: 'var(--bg-paper)', display: 'flex', gap: 12, alignItems: 'center' }}>
-            <input
-              type="text"
-              className="hcn-input"
-              placeholder="اكتب رداً يدويًا للمشترك عبر تيليجرام..."
-              value={replyText}
-              onChange={e => setReplyText(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendReply();
-                }
-              }}
-              style={{ flex: 1 }}
-            />
-            <button
-              onClick={handleSendReply}
-              disabled={sendingReply || !replyText.trim() || !selectedSessionId}
-              className="hcn-btn-primary"
-              style={{ padding: '10px 20px', gap: 8, display: 'flex', alignItems: 'center', minWidth: 120, justifyContent: 'center' }}
-            >
-              <Send size={16} />
-              {sendingReply ? 'جاري الإرسال...' : 'إرسال رد'}
-            </button>
-          </div>
+          {hasPermission('reply_chat_sessions') && (
+            <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', background: 'var(--bg-paper)', display: 'flex', gap: 12, alignItems: 'center' }}>
+              <input
+                type="text"
+                className="hcn-input"
+                placeholder="اكتب رداً يدويًا للمشترك عبر تيليجرام..."
+                value={replyText}
+                onChange={e => setReplyText(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendReply();
+                  }
+                }}
+                style={{ flex: 1 }}
+              />
+              <button
+                onClick={handleSendReply}
+                disabled={sendingReply || !replyText.trim() || !selectedSessionId}
+                className="hcn-btn-primary"
+                style={{ padding: '10px 20px', gap: 8, display: 'flex', alignItems: 'center', minWidth: 120, justifyContent: 'center' }}
+              >
+                <Send size={16} />
+                {sendingReply ? 'جاري الإرسال...' : 'إرسال رد'}
+              </button>
+            </div>
+          )}
 
           {/* معاينة الصورة في Lightbox */}
           {previewImage && (
-            <div 
+            <div
               onClick={() => setPreviewImage(null)}
               style={{
                 position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
@@ -438,10 +465,10 @@ export default function SessionsChatTab() {
                 padding: 24, cursor: 'zoom-out'
               }}
             >
-              <img 
-                src={previewImage} 
-                alt="Enlarged User Photo" 
-                style={{ maxWidth: '90%', maxHeight: '90%', borderRadius: 12, boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }} 
+              <img
+                src={previewImage}
+                alt="Enlarged User Photo"
+                style={{ maxWidth: '90%', maxHeight: '90%', borderRadius: 12, boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}
               />
             </div>
           )}

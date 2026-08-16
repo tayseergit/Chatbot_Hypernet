@@ -1,0 +1,167 @@
+.cm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: cm-fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cm-card {
+  background: var(--bg-paper, #ffffff);
+  width: 100%;
+  max-width: 420px;
+  padding: 32px 24px;
+  border-radius: 24px;
+  box-shadow: 0 32px 64px -12px rgba(0, 0, 0, 0.15),
+              0 0 0 1px rgba(255, 255, 255, 0.2) inset;
+  text-align: center;
+  animation: cm-scaleUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+[data-theme='dark'] .cm-card {
+  background: #1e293b;
+  box-shadow: 0 32px 64px -12px rgba(0, 0, 0, 0.5),
+              0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+}
+
+/* Icons */
+.cm-icon-wrapper {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  z-index: 1;
+}
+
+.cm-icon-bg {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  z-index: -1;
+  animation: cm-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.cm-type-danger .cm-icon-wrapper { color: #ef4444; }
+.cm-type-danger .cm-icon-bg { background: rgba(239, 68, 68, 0.15); }
+.cm-type-danger .cm-icon-wrapper svg { animation: cm-shake 0.5s ease-in-out 0.2s; }
+
+.cm-type-primary .cm-icon-wrapper { color: #3b82f6; }
+.cm-type-primary .cm-icon-bg { background: rgba(59, 130, 246, 0.15); }
+
+.cm-type-success .cm-icon-wrapper { color: #10b981; }
+.cm-type-success .cm-icon-bg { background: rgba(16, 185, 129, 0.15); }
+
+/* Typography */
+.cm-title {
+  margin: 0 0 12px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+}
+[data-theme='dark'] .cm-title { color: #f8fafc; }
+
+.cm-message {
+  margin: 0 0 32px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-secondary, #64748b);
+}
+[data-theme='dark'] .cm-message { color: #94a3b8; }
+
+/* Buttons */
+.cm-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.cm-btn-cancel,
+.cm-btn-confirm {
+  padding: 12px 24px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+  font-family: inherit;
+}
+
+.cm-btn-cancel {
+  background: var(--bg-default, #f1f5f9);
+  color: var(--text-primary, #334155);
+}
+[data-theme='dark'] .cm-btn-cancel {
+  background: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+}
+
+.cm-btn-cancel:hover {
+  background: var(--bg-hover, #e2e8f0);
+}
+[data-theme='dark'] .cm-btn-cancel:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.cm-btn-confirm {
+  color: #fff;
+  box-shadow: 0 4px 14px 0 rgba(0, 0, 0, 0.2);
+}
+
+.cm-type-danger .cm-btn-confirm {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  box-shadow: 0 8px 16px -4px rgba(239, 68, 68, 0.4);
+}
+.cm-type-danger .cm-btn-confirm:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 20px -4px rgba(239, 68, 68, 0.5);
+}
+
+.cm-type-primary .cm-btn-confirm {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  box-shadow: 0 8px 16px -4px rgba(59, 130, 246, 0.4);
+}
+.cm-type-primary .cm-btn-confirm:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 20px -4px rgba(59, 130, 246, 0.5);
+}
+
+.cm-btn-confirm:active,
+.cm-btn-cancel:active {
+  transform: translateY(1px);
+}
+
+/* Animations */
+@keyframes cm-fadeIn {
+  from { opacity: 0; backdrop-filter: blur(0px); }
+  to { opacity: 1; backdrop-filter: blur(8px); }
+}
+
+@keyframes cm-scaleUp {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes cm-pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.5; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes cm-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}

@@ -5,6 +5,8 @@ import {
   Save, CheckCircle2, Loader2, Filter, Layers, Check
 } from 'lucide-react';
 import { usePasswordAuth, PasswordPromptModal } from './PasswordPromptModal';
+import ConfirmModal from './ConfirmModal';
+import { useAuth } from '../context/AuthContext';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -26,43 +28,43 @@ export default function KnowledgeBaseTab() {
   const [activeSubTab, setActiveSubTab] = useState('qa');
 
   // Global Stats
-  const [stats, setStats]               = useState(null);
+  const [stats, setStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(true);
-  const [reindexing, setReindexing]     = useState(false);
-  const [toastMsg, setToastMsg]         = useState(null);
+  const [reindexing, setReindexing] = useState(false);
+  const [toastMsg, setToastMsg] = useState(null);
+  const [confirmAction, setConfirmAction] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
 
   // 1. Q&A State
-  const [qaList, setQaList]             = useState([]);
-  const [qaLoading, setQaLoading]       = useState(false);
-  const [qaSearch, setQaSearch]         = useState('');
-  const [qaCategory, setQaCategory]     = useState('ALL');
-  const [qaPage, setQaPage]             = useState(1);
+  const [qaList, setQaList] = useState([]);
+  const [qaLoading, setQaLoading] = useState(false);
+  const [qaSearch, setQaSearch] = useState('');
+  const [qaCategory, setQaCategory] = useState('ALL');
+  const [qaPage, setQaPage] = useState(1);
   const qaPerPage = 10;
 
   // Modal State (Add / Edit Q&A)
-  const [modalOpen, setModalOpen]       = useState(false);
-  const [modalMode, setModalMode]       = useState('add');
-  const [editIndex, setEditIndex]       = useState(null);
-  const [formData, setFormData]         = useState({ category: 'general', question: '', answer: '' });
-  const [savingQa, setSavingQa]         = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState('add');
+  const [editIndex, setEditIndex] = useState(null);
+  const [formData, setFormData] = useState({ category: 'general', question: '', answer: '' });
+  const [savingQa, setSavingQa] = useState(false);
 
   // 2. Company Info State
-  const [companyData, setCompanyData]   = useState(null);
+  const [companyData, setCompanyData] = useState(null);
   const [companyLoading, setCompanyLoading] = useState(false);
-  const [savingCompany, setSavingCompany]   = useState(false);
-  const [companySubTab, setCompanySubTab]   = useState('adsl_monthly');
+  const [savingCompany, setSavingCompany] = useState(false);
+  const [companySubTab, setCompanySubTab] = useState('adsl_monthly');
 
   // 3. PDF Guides State
-  const [pdfList, setPdfList]           = useState([]);
-  const [pdfLoading, setPdfLoading]     = useState(false);
+  const [pdfList, setPdfList] = useState([]);
+  const [pdfLoading, setPdfLoading] = useState(false);
   const [uploadingPdf, setUploadingPdf] = useState(false);
 
   // 4. Semantic Search Tester State
-  const [testQuery, setTestQuery]       = useState('');
-  const [testResult, setTestResult]     = useState(null);
-  const [testingRAG, setTestingRAG]     = useState(false);
 
   const { requireAuth, modalProps } = usePasswordAuth();
+  const { hasPermission } = useAuth();
+  const canEdit = hasPermission('edit_knowledge_base');
 
   const showToast = (type, text) => {
     setToastMsg({ type, text });
@@ -154,22 +156,20 @@ export default function KnowledgeBaseTab() {
   }, [qaSearch, qaCategory]);
 
   // Re-index all sources
-  const handleReindex = () => {
-    requireAuth('مزامنة وتحديث بيانات قاعدة المعرفة', async () => {
-      setReindexing(true);
-      try {
-        const res = await fetch(`${API}/api/rag/reindex`, { method: 'POST' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        showToast('success', 'تمت مزامنة البيانات وتحديث قاعدة المعرفة بنجاح');
-        fetchStats();
-        fetchQA();
-        fetchPDFs();
-      } catch (e) {
-        showToast('error', `تعذرت المزامنة: ${e.message}`);
-      } finally {
-        setReindexing(false);
-      }
-    });
+  const handleReindex = async () => {
+    setReindexing(true);
+    try {
+      const res = await fetch(`${API}/api/rag/reindex`, { method: 'POST' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      showToast('success', 'تمت مزامنة البيانات وتحديث قاعدة المعرفة بنجاح');
+      fetchStats();
+      fetchQA();
+      fetchPDFs();
+    } catch (e) {
+      showToast('error', `تعذرت المزامنة: ${e.message}`);
+    } finally {
+      setReindexing(false);
+    }
   };
 
   // Save / Update Q&A
@@ -204,22 +204,43 @@ export default function KnowledgeBaseTab() {
 
   // Delete Q&A
   const handleDeleteQA = (id) => {
-    if (!window.confirm('هل ترغب في تأكيد حذف هذا السجل؟')) return;
-    requireAuth('حذف سؤال من قاعدة المعرفة', async () => {
-      try {
-        const res = await fetch(`${API}/api/rag/qa/${id}`, { method: 'DELETE' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        showToast('success', 'تم حذف السجل بنجاح');
-        fetchQA();
-        fetchStats();
-      } catch (e) {
-        showToast('error', `تعذر الحذف: ${e.message}`);
+    setConfirmAction({
+      isOpen: true,
+      title: 'تأكيد الحذف',
+      message: 'هل ترغب في تأكيد حذف هذا السجل؟',
+      onConfirm: async () => {
+        setConfirmAction({ isOpen: false });
+        requireAuth('حذف سؤال من قاعدة المعرفة', async () => {
+          try {
+            const res = await fetch(`${API}/api/rag/qa/${id}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            showToast('success', 'تم حذف السجل بنجاح');
+            fetchQA();
+            fetchStats();
+          } catch (e) {
+            showToast('error', `تعذر الحذف: ${e.message}`);
+          }
+        });
       }
     });
   };
 
   // Save Company Info Changes
   const handleSaveCompany = () => {
+    // Basic validation: ensure no empty fields
+    for (const [key, value] of Object.entries(companyData)) {
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          for (const val of Object.values(item)) {
+            if (val === undefined || val === null || String(val).trim() === '') {
+              showToast('error', 'يرجى تعبئة جميع الحقول أو حذف الأسطر الفارغة قبل الحفظ');
+              return;
+            }
+          }
+        }
+      }
+    }
+
     requireAuth('حفظ تعديلات الباقات والخدمات الرسمية', async () => {
       setSavingCompany(true);
       try {
@@ -264,61 +285,47 @@ export default function KnowledgeBaseTab() {
         showToast('error', `تعذر رفع الملف: ${e.message}`);
       } finally {
         setUploadingPdf(false);
-        e.target.value = null; // Clear input if possible (may not work directly if e.target is lost, but safe)
+        e.target.value = null;
       }
     });
   };
 
   // Delete PDF
   const handleDeletePdf = (filename) => {
-    if (!window.confirm(`هل ترغب في تأكيد حذف الملف "${filename}"؟`)) return;
-    requireAuth(`حذف ملف ${filename}`, async () => {
-      try {
-        const res = await fetch(`${API}/api/rag/pdfs/${encodeURIComponent(filename)}`, {
-          method: 'DELETE'
+    setConfirmAction({
+      isOpen: true,
+      title: 'تأكيد الحذف',
+      message: `هل ترغب في تأكيد حذف الملف "${filename}"؟`,
+      onConfirm: async () => {
+        setConfirmAction({ isOpen: false });
+        requireAuth(`حذف ملف ${filename}`, async () => {
+          try {
+            const res = await fetch(`${API}/api/rag/pdfs/${encodeURIComponent(filename)}`, {
+              method: 'DELETE'
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            showToast('success', 'تم حذف الملف بنجاح');
+            fetchPDFs();
+            fetchStats();
+          } catch (e) {
+            showToast('error', `تعذر الحذف: ${e.message}`);
+          }
         });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        showToast('success', 'تم حذف الملف بنجاح');
-        fetchPDFs();
-        fetchStats();
-      } catch (e) {
-        showToast('error', `تعذر الحذف: ${e.message}`);
       }
     });
   };
 
   // Semantic Tester
-  const handleTestSearch = async (e) => {
-    if (e) e.preventDefault();
-    if (!testQuery.trim()) return;
-    setTestingRAG(true);
-    setTestResult(null);
-    try {
-      const res = await fetch(`${API}/api/rag/search`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: testQuery }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setTestResult(data);
-    } catch (e) {
-      showToast('error', `تعذر استرجاع النتائج: ${e.message}`);
-    } finally {
-      setTestingRAG(false);
-    }
-  };
+  
 
-  // Pagination for QA
   const paginatedQa = qaList.slice((qaPage - 1) * qaPerPage, qaPage * qaPerPage);
   const totalPages = Math.ceil(qaList.length / qaPerPage) || 1;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18, maxWidth: '100%', overflow: 'hidden' }}>
-      
+
       <PasswordPromptModal {...modalProps} />
 
-      {/* ── رأس الصفحة الرسمي ── */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -336,7 +343,7 @@ export default function KnowledgeBaseTab() {
           </h1>
         </div>
 
-        <button
+        <button type="button"
           onClick={handleReindex}
           disabled={reindexing}
           className="hcn-btn-primary"
@@ -347,7 +354,6 @@ export default function KnowledgeBaseTab() {
         </button>
       </div>
 
-      {/* تنبيه الإشعارات */}
       {toastMsg && (
         <div style={{
           padding: '11px 16px',
@@ -366,7 +372,6 @@ export default function KnowledgeBaseTab() {
         </div>
       )}
 
-      {/* ── بطاقات الإحصائيات الرسمية ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 14 }}>
         <div className="hcn-card" style={{ padding: '16px 20px', borderRight: '4px solid var(--primary)' }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>بنك الأسئلة الشائعة</div>
@@ -390,7 +395,6 @@ export default function KnowledgeBaseTab() {
         </div>
       </div>
 
-      {/* ── شريط التبويبات الرئيسي ── */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -405,12 +409,11 @@ export default function KnowledgeBaseTab() {
           { key: 'qa', label: `بنك الأسئلة (${qaList.length})`, icon: BookOpen },
           { key: 'company', label: 'الباقات والخدمات الرسمية', icon: DollarSign },
           { key: 'pdfs', label: `الأدلة والكتيبات الفنية (${pdfList.length})`, icon: FileText },
-          { key: 'tester', label: 'اختبار دقة الاستجابة', icon: Search },
         ].map(tab => {
           const Icon = tab.icon;
           const isActive = activeSubTab === tab.key;
           return (
-            <button
+            <button type="button"
               key={tab.key}
               onClick={() => setActiveSubTab(tab.key)}
               style={{
@@ -435,9 +438,6 @@ export default function KnowledgeBaseTab() {
         })}
       </div>
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          1. تبويب بنك الأسئلة الشائعة (Q&A)
-         ══════════════════════════════════════════════════════════════════════ */}
       {activeSubTab === 'qa' && (
         <div className="hcn-card" style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
@@ -450,7 +450,7 @@ export default function KnowledgeBaseTab() {
                   value={qaSearch}
                   onChange={(e) => setQaSearch(e.target.value)}
                   className="hcn-input"
-                  style={{ paddingRight: 36, width: '100%', height: 38, fontSize: 13 }}
+                  style={{ paddingRight: 36, paddingLeft: 12, paddingTop: 4, paddingBottom: 4, width: '100%', height: 38, fontSize: 13 }}
                 />
               </div>
 
@@ -458,7 +458,7 @@ export default function KnowledgeBaseTab() {
                 value={qaCategory}
                 onChange={(e) => setQaCategory(e.target.value)}
                 className="hcn-input"
-                style={{ width: 210, height: 38, fontSize: 13 }}
+                style={{ width: 210, height: 38, fontSize: 13, padding: '4px 12px' }}
               >
                 {Object.entries(CATEGORY_MAP).map(([key, label]) => (
                   <option key={key} value={key}>{label}</option>
@@ -466,21 +466,22 @@ export default function KnowledgeBaseTab() {
               </select>
             </div>
 
-            <button
-              onClick={() => {
-                setModalMode('add');
-                setFormData({ category: 'general', question: '', answer: '' });
-                setModalOpen(true);
-              }}
-              className="hcn-btn-primary"
-              style={{ gap: 6, height: 38, fontSize: 13, fontWeight: 600 }}
-            >
-              <Plus size={16} />
-              إضافة سؤال جديد
-            </button>
+            {canEdit && (
+              <button type="button"
+                onClick={() => {
+                  setModalMode('add');
+                  setFormData({ category: 'general', question: '', answer: '' });
+                  setModalOpen(true);
+                }}
+                className="hcn-btn-primary"
+                style={{ gap: 6, height: 38, fontSize: 13, fontWeight: 600 }}
+              >
+                <Plus size={16} />
+                إضافة سؤال جديد
+              </button>
+            )}
           </div>
 
-          {/* الجدول */}
           <div className="hcn-table-wrapper" style={{ overflowX: 'auto', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
             <table className="hcn-table" style={{ width: '100%', tableLayout: 'fixed' }}>
               <thead>
@@ -489,7 +490,7 @@ export default function KnowledgeBaseTab() {
                   <th style={{ width: '18%' }}>القسم</th>
                   <th style={{ width: '32%' }}>السؤال</th>
                   <th style={{ width: '35%' }}>الإجابة المعتمدة</th>
-                  <th style={{ width: '10%', textAlign: 'center' }}>الإجراءات</th>
+                  {canEdit && <th style={{ width: '10%', textAlign: 'center' }}>الإجراءات</th>}
                 </tr>
               </thead>
               <tbody>
@@ -522,31 +523,33 @@ export default function KnowledgeBaseTab() {
                       <td style={{ color: 'var(--text-secondary)', fontSize: 12, lineHeight: 1.5, wordBreak: 'break-word' }}>
                         {item.answer}
                       </td>
-                      <td style={{ textAlign: 'center' }}>
-                        <div style={{ display: 'inline-flex', gap: 4 }}>
-                          <button
-                            onClick={() => {
-                              setModalMode('edit');
-                              setEditIndex(item.id);
-                              setFormData({ category: item.category, question: item.question, answer: item.answer });
-                              setModalOpen(true);
-                            }}
-                            className="hcn-btn-ghost"
-                            style={{ padding: 6, color: 'var(--primary)' }}
-                            title="تعديل"
-                          >
-                            <Edit3 size={15} />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteQA(item.id)}
-                            className="hcn-btn-ghost"
-                            style={{ padding: 6, color: 'var(--error)' }}
-                            title="حذف"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
-                      </td>
+                      {canEdit && (
+                        <td style={{ textAlign: 'center' }}>
+                          <div style={{ display: 'inline-flex', gap: 4 }}>
+                            <button type="button"
+                              onClick={() => {
+                                setModalMode('edit');
+                                setEditIndex(item.id);
+                                setFormData({ category: item.category, question: item.question, answer: item.answer });
+                                setModalOpen(true);
+                              }}
+                              className="hcn-btn-ghost"
+                              style={{ padding: 6, color: 'var(--primary)' }}
+                              title="تعديل"
+                            >
+                              <Edit3 size={15} />
+                            </button>
+                            <button type="button"
+                              onClick={() => handleDeleteQA(item.id)}
+                              className="hcn-btn-ghost"
+                              style={{ padding: 6, color: 'var(--error)' }}
+                              title="حذف"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))
                 )}
@@ -554,23 +557,22 @@ export default function KnowledgeBaseTab() {
             </table>
           </div>
 
-          {/* الترقيم */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
             <div>عرض {paginatedQa.length} من إجمالي {qaList.length} سجل</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <button
+              <button type="button"
                 disabled={qaPage <= 1}
                 onClick={() => setQaPage(p => p - 1)}
-                className="hcn-btn"
+                className="hcn-btn-outlined"
                 style={{ padding: '4px 12px', fontSize: 12 }}
               >
                 السابق
               </button>
               <span style={{ fontWeight: 600, color: 'var(--text-primary)', padding: '0 6px' }}>{qaPage} / {totalPages}</span>
-              <button
+              <button type="button"
                 disabled={qaPage >= totalPages}
                 onClick={() => setQaPage(p => p + 1)}
-                className="hcn-btn"
+                className="hcn-btn-outlined"
                 style={{ padding: '4px 12px', fontSize: 12 }}
               >
                 التالي
@@ -580,16 +582,15 @@ export default function KnowledgeBaseTab() {
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          2. تبويب الباقات والخدمات الرسمية (Company Info)
-         ══════════════════════════════════════════════════════════════════════ */}
       {activeSubTab === 'company' && (
         <div className="hcn-card" style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, borderBottom: '1px solid var(--border-color)', paddingBottom: 12 }}>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {[
                 { key: 'adsl_monthly', label: 'باقات ADSL الشهرية', icon: Wifi },
-                { key: 'adsl_topup', label: 'باقات الشحن (Topup)', icon: Plus },
+                { key: 'adsl_topup', label: 'باقات الشحن ADSL', icon: Plus },
+                { key: 'wifi_outdoor_monthly', label: 'باقات WIFI', icon: Wifi },
+                { key: 'wifi_outdoor_topup', label: 'شحن WIFI', icon: Plus },
                 { key: 'services', label: 'الخدمات والرسوم', icon: RefreshCw },
                 { key: 'iptv_packages', label: 'باقات IPTV', icon: Tv },
                 { key: 'contacts', label: 'بيانات التواصل', icon: Phone },
@@ -597,7 +598,7 @@ export default function KnowledgeBaseTab() {
                 const Icon = sub.icon;
                 const isSubActive = companySubTab === sub.key;
                 return (
-                  <button
+                  <button type="button"
                     key={sub.key}
                     onClick={() => setCompanySubTab(sub.key)}
                     style={{
@@ -621,15 +622,17 @@ export default function KnowledgeBaseTab() {
               })}
             </div>
 
-            <button
-              onClick={handleSaveCompany}
-              disabled={savingCompany}
-              className="hcn-btn-primary"
-              style={{ gap: 6, background: '#10B981', height: 36, fontSize: 13, fontWeight: 600 }}
-            >
-              {savingCompany ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
-              {savingCompany ? 'جاري الحفظ...' : 'حفظ التغييرات'}
-            </button>
+            {canEdit && (
+              <button type="button"
+                onClick={handleSaveCompany}
+                disabled={savingCompany}
+                className="hcn-btn-primary"
+                style={{ gap: 6, background: '#10B981', height: 36, fontSize: 13, fontWeight: 600 }}
+              >
+                {savingCompany ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                {savingCompany ? 'جاري الحفظ...' : 'حفظ التغييرات'}
+              </button>
+            )}
           </div>
 
           {companyLoading ? (
@@ -638,22 +641,21 @@ export default function KnowledgeBaseTab() {
             <div style={{ textAlign: 'center', padding: 30, color: 'var(--text-disabled)' }}>لا توجد بيانات متاحة.</div>
           ) : (
             <div>
-              {/* باقات ADSL الشهرية */}
               {companySubTab === 'adsl_monthly' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>باقات ADSL الشهرية</span>
-                    <button
+                    {canEdit && (<button type="button"
                       onClick={() => {
                         const next = { ...companyData };
-                        next.adsl_monthly = [...(next.adsl_monthly || []), { speed: '2 MB', quota: '85 GB', price: '240', speed_after_quota: '256 KB' }];
+                        next.adsl_monthly = [...(next.adsl_monthly || []), { speed: '', quota: '', price: '', speed_after_quota: '' }];
                         setCompanyData(next);
                       }}
-                      className="hcn-btn"
+                      className="hcn-btn-outlined"
                       style={{ fontSize: 12, padding: '4px 10px', gap: 4 }}
                     >
                       <Plus size={14} /> إضافة باقة
-                    </button>
+                    </button>)}
                   </div>
                   <div className="hcn-table-wrapper" style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
                     <table className="hcn-table">
@@ -661,9 +663,9 @@ export default function KnowledgeBaseTab() {
                         <tr>
                           <th>السرعة</th>
                           <th>حجم الباقة</th>
-                          <th>السعر (ألف ل.س)</th>
+                          <th>السعر (ل.س)</th>
                           <th>السرعة بعد استهلاك الحجم</th>
-                          <th style={{ width: 60, textAlign: 'center' }}>حذف</th>
+                          {canEdit && <th style={{ width: 60, textAlign: 'center' }}>حذف</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -675,6 +677,7 @@ export default function KnowledgeBaseTab() {
                                 className="hcn-input"
                                 style={{ height: 32, fontSize: 12 }}
                                 value={pkg.speed}
+                                disabled={!canEdit}
                                 onChange={(e) => {
                                   const next = { ...companyData };
                                   next.adsl_monthly[idx].speed = e.target.value;
@@ -688,6 +691,7 @@ export default function KnowledgeBaseTab() {
                                 className="hcn-input"
                                 style={{ height: 32, fontSize: 12 }}
                                 value={pkg.quota}
+                                disabled={!canEdit}
                                 onChange={(e) => {
                                   const next = { ...companyData };
                                   next.adsl_monthly[idx].quota = e.target.value;
@@ -701,6 +705,7 @@ export default function KnowledgeBaseTab() {
                                 className="hcn-input"
                                 style={{ height: 32, fontSize: 12 }}
                                 value={pkg.price}
+                                disabled={!canEdit}
                                 onChange={(e) => {
                                   const next = { ...companyData };
                                   next.adsl_monthly[idx].price = e.target.value;
@@ -714,6 +719,7 @@ export default function KnowledgeBaseTab() {
                                 className="hcn-input"
                                 style={{ height: 32, fontSize: 12 }}
                                 value={pkg.speed_after_quota}
+                                disabled={!canEdit}
                                 onChange={(e) => {
                                   const next = { ...companyData };
                                   next.adsl_monthly[idx].speed_after_quota = e.target.value;
@@ -721,8 +727,8 @@ export default function KnowledgeBaseTab() {
                                 }}
                               />
                             </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <button
+                            {canEdit && (<td style={{ textAlign: 'center' }}>
+                              <button type="button"
                                 onClick={() => {
                                   const next = { ...companyData };
                                   next.adsl_monthly.splice(idx, 1);
@@ -733,7 +739,7 @@ export default function KnowledgeBaseTab() {
                               >
                                 <Trash2 size={15} />
                               </button>
-                            </td>
+                            </td>)}
                           </tr>
                         ))}
                       </tbody>
@@ -742,30 +748,151 @@ export default function KnowledgeBaseTab() {
                 </div>
               )}
 
-              {/* باقات Topup */}
+              {companySubTab === 'wifi_outdoor_monthly' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>باقات WIFI Outdoor الشهرية</span>
+                    {canEdit && (<button type="button"
+                      onClick={() => {
+                        const next = { ...companyData };
+                        next.wifi_outdoor_monthly = [...(next.wifi_outdoor_monthly || []), { package: '', speed: '', quota: '', price: '', type: '' }];
+                        setCompanyData(next);
+                      }}
+                      className="hcn-btn-outlined"
+                      style={{ fontSize: 12, padding: '4px 10px', gap: 4 }}
+                    >
+                      <Plus size={14} /> إضافة باقة
+                    </button>)}
+                  </div>
+                  <div className="hcn-table-wrapper" style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
+                    <table className="hcn-table">
+                      <thead>
+                        <tr>
+                          <th>اسم الباقة</th>
+                          <th>السرعة</th>
+                          <th>حجم الباقة</th>
+                          <th>السعر (ل.س)</th>
+                          <th>النوع</th>
+                          {canEdit && <th style={{ width: 60, textAlign: 'center' }}>حذف</th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(companyData.wifi_outdoor_monthly || []).map((pkg, idx) => (
+                          <tr key={idx}>
+                            <td>
+                              <input
+                                type="text"
+                                className="hcn-input"
+                                style={{ height: 32, fontSize: 12 }}
+                                value={pkg.package || ''}
+                                disabled={!canEdit}
+                                onChange={(e) => {
+                                  const next = { ...companyData };
+                                  next.wifi_outdoor_monthly[idx].package = e.target.value;
+                                  setCompanyData(next);
+                                }}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="text"
+                                className="hcn-input"
+                                style={{ height: 32, fontSize: 12 }}
+                                value={pkg.speed || ''}
+                                disabled={!canEdit}
+                                onChange={(e) => {
+                                  const next = { ...companyData };
+                                  next.wifi_outdoor_monthly[idx].speed = e.target.value;
+                                  setCompanyData(next);
+                                }}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="text"
+                                className="hcn-input"
+                                style={{ height: 32, fontSize: 12 }}
+                                value={pkg.quota || ''}
+                                disabled={!canEdit}
+                                onChange={(e) => {
+                                  const next = { ...companyData };
+                                  next.wifi_outdoor_monthly[idx].quota = e.target.value;
+                                  setCompanyData(next);
+                                }}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="text"
+                                className="hcn-input"
+                                style={{ height: 32, fontSize: 12 }}
+                                value={pkg.price || ''}
+                                disabled={!canEdit}
+                                onChange={(e) => {
+                                  const next = { ...companyData };
+                                  next.wifi_outdoor_monthly[idx].price = e.target.value;
+                                  setCompanyData(next);
+                                }}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="text"
+                                className="hcn-input"
+                                style={{ height: 32, fontSize: 12 }}
+                                value={pkg.type || ''}
+                                disabled={!canEdit}
+                                onChange={(e) => {
+                                  const next = { ...companyData };
+                                  next.wifi_outdoor_monthly[idx].type = e.target.value;
+                                  setCompanyData(next);
+                                }}
+                              />
+                            </td>
+                            {canEdit && (<td style={{ textAlign: 'center' }}>
+                              <button type="button"
+                                onClick={() => {
+                                  const next = { ...companyData };
+                                  next.wifi_outdoor_monthly.splice(idx, 1);
+                                  setCompanyData(next);
+                                }}
+                                className="hcn-btn-ghost"
+                                style={{ color: 'var(--error)', padding: 4 }}
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </td>)}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
               {companySubTab === 'adsl_topup' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>باقات الشحن الإضافي (Topup)</span>
-                    <button
+                    {canEdit && (<button type="button"
                       onClick={() => {
                         const next = { ...companyData };
-                        next.adsl_topup = [...(next.adsl_topup || []), { quota: '10 GB', price: '33' }];
+                        next.adsl_topup = [...(next.adsl_topup || []), { quota: '', price: '' }];
                         setCompanyData(next);
                       }}
-                      className="hcn-btn"
+                      className="hcn-btn-outlined"
                       style={{ fontSize: 12, padding: '4px 10px', gap: 4 }}
                     >
                       <Plus size={14} /> إضافة شحنة
-                    </button>
+                    </button>)}
                   </div>
                   <div className="hcn-table-wrapper" style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
                     <table className="hcn-table">
                       <thead>
                         <tr>
                           <th>حجم الباقة الإضافية</th>
-                          <th>السعر (ألف ل.س)</th>
-                          <th style={{ width: 60, textAlign: 'center' }}>حذف</th>
+                          <th>السعر (ل.س)</th>
+                          {canEdit && <th style={{ width: 60, textAlign: 'center' }}>حذف</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -777,6 +904,7 @@ export default function KnowledgeBaseTab() {
                                 className="hcn-input"
                                 style={{ height: 32, fontSize: 12 }}
                                 value={t.quota}
+                                disabled={!canEdit}
                                 onChange={(e) => {
                                   const next = { ...companyData };
                                   next.adsl_topup[idx].quota = e.target.value;
@@ -790,6 +918,7 @@ export default function KnowledgeBaseTab() {
                                 className="hcn-input"
                                 style={{ height: 32, fontSize: 12 }}
                                 value={t.price}
+                                disabled={!canEdit}
                                 onChange={(e) => {
                                   const next = { ...companyData };
                                   next.adsl_topup[idx].price = e.target.value;
@@ -797,8 +926,8 @@ export default function KnowledgeBaseTab() {
                                 }}
                               />
                             </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <button
+                            {canEdit && (<td style={{ textAlign: 'center' }}>
+                              <button type="button"
                                 onClick={() => {
                                   const next = { ...companyData };
                                   next.adsl_topup.splice(idx, 1);
@@ -809,7 +938,7 @@ export default function KnowledgeBaseTab() {
                               >
                                 <Trash2 size={15} />
                               </button>
-                            </td>
+                            </td>)}
                           </tr>
                         ))}
                       </tbody>
@@ -818,31 +947,107 @@ export default function KnowledgeBaseTab() {
                 </div>
               )}
 
-              {/* الخدمات المضافة */}
+              {companySubTab === 'wifi_outdoor_topup' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>باقات شحن WIFI الإضافية</span>
+                    {canEdit && (<button type="button"
+                      onClick={() => {
+                        const next = { ...companyData };
+                        next.wifi_outdoor_topup = [...(next.wifi_outdoor_topup || []), { quota: '10 GB', price: '100' }];
+                        setCompanyData(next);
+                      }}
+                      className="hcn-btn-outlined"
+                      style={{ fontSize: 12, padding: '4px 10px', gap: 4 }}
+                    >
+                      <Plus size={14} /> إضافة شحنة
+                    </button>)}
+                  </div>
+                  <div className="hcn-table-wrapper" style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
+                    <table className="hcn-table">
+                      <thead>
+                        <tr>
+                          <th>حجم الباقة الإضافية</th>
+                          <th>السعر (ل.س)</th>
+                          {canEdit && <th style={{ width: 60, textAlign: 'center' }}>حذف</th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(companyData.wifi_outdoor_topup || []).map((t, idx) => (
+                          <tr key={idx}>
+                            <td>
+                              <input
+                                type="text"
+                                className="hcn-input"
+                                style={{ height: 32, fontSize: 12 }}
+                                value={t.quota || ''}
+                                disabled={!canEdit}
+                                onChange={(e) => {
+                                  const next = { ...companyData };
+                                  next.wifi_outdoor_topup[idx].quota = e.target.value;
+                                  setCompanyData(next);
+                                }}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="text"
+                                className="hcn-input"
+                                style={{ height: 32, fontSize: 12 }}
+                                value={t.price || ''}
+                                disabled={!canEdit}
+                                onChange={(e) => {
+                                  const next = { ...companyData };
+                                  next.wifi_outdoor_topup[idx].price = e.target.value;
+                                  setCompanyData(next);
+                                }}
+                              />
+                            </td>
+                            {canEdit && (<td style={{ textAlign: 'center' }}>
+                              <button type="button"
+                                onClick={() => {
+                                  const next = { ...companyData };
+                                  next.wifi_outdoor_topup.splice(idx, 1);
+                                  setCompanyData(next);
+                                }}
+                                className="hcn-btn-ghost"
+                                style={{ color: 'var(--error)', padding: 4 }}
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </td>)}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
               {companySubTab === 'services' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>الخدمات الإضافية والرسوم</span>
-                    <button
+                    {canEdit && (<button type="button"
                       onClick={() => {
                         const next = { ...companyData };
                         next.services = [...(next.services || []), { name: 'خدمة جديدة', price: '50', notes: 'ملاحظة' }];
                         setCompanyData(next);
                       }}
-                      className="hcn-btn"
+                      className="hcn-btn-outlined"
                       style={{ fontSize: 12, padding: '4px 10px', gap: 4 }}
                     >
                       <Plus size={14} /> إضافة خدمة
-                    </button>
+                    </button>)}
                   </div>
                   <div className="hcn-table-wrapper" style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
                     <table className="hcn-table">
                       <thead>
                         <tr>
                           <th>اسم الخدمة</th>
-                          <th>السعر (ألف ل.س)</th>
+                          <th>السعر (ل.س)</th>
                           <th>ملاحظات وتفاصيل</th>
-                          <th style={{ width: 60, textAlign: 'center' }}>حذف</th>
+                          {canEdit && <th style={{ width: 60, textAlign: 'center' }}>حذف</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -854,6 +1059,7 @@ export default function KnowledgeBaseTab() {
                                 className="hcn-input"
                                 style={{ height: 32, fontSize: 12 }}
                                 value={srv.name}
+                                disabled={!canEdit}
                                 onChange={(e) => {
                                   const next = { ...companyData };
                                   next.services[idx].name = e.target.value;
@@ -867,6 +1073,7 @@ export default function KnowledgeBaseTab() {
                                 className="hcn-input"
                                 style={{ height: 32, fontSize: 12 }}
                                 value={srv.price}
+                                disabled={!canEdit}
                                 onChange={(e) => {
                                   const next = { ...companyData };
                                   next.services[idx].price = e.target.value;
@@ -880,6 +1087,7 @@ export default function KnowledgeBaseTab() {
                                 className="hcn-input"
                                 style={{ height: 32, fontSize: 12 }}
                                 value={srv.notes}
+                                disabled={!canEdit}
                                 onChange={(e) => {
                                   const next = { ...companyData };
                                   next.services[idx].notes = e.target.value;
@@ -887,8 +1095,8 @@ export default function KnowledgeBaseTab() {
                                 }}
                               />
                             </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <button
+                            {canEdit && (<td style={{ textAlign: 'center' }}>
+                              <button type="button"
                                 onClick={() => {
                                   const next = { ...companyData };
                                   next.services.splice(idx, 1);
@@ -899,7 +1107,7 @@ export default function KnowledgeBaseTab() {
                               >
                                 <Trash2 size={15} />
                               </button>
-                            </td>
+                            </td>)}
                           </tr>
                         ))}
                       </tbody>
@@ -908,31 +1116,30 @@ export default function KnowledgeBaseTab() {
                 </div>
               )}
 
-              {/* باقات IPTV */}
               {companySubTab === 'iptv_packages' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>باقات البث الرقمي (IPTV)</span>
-                    <button
+                    {canEdit && (<button type="button"
                       onClick={() => {
                         const next = { ...companyData };
                         next.iptv_packages = [...(next.iptv_packages || []), { name: 'PRO SPORT', price: '175', channels: '80 قناة' }];
                         setCompanyData(next);
                       }}
-                      className="hcn-btn"
+                      className="hcn-btn-outlined"
                       style={{ fontSize: 12, padding: '4px 10px', gap: 4 }}
                     >
                       <Plus size={14} /> إضافة باقة
-                    </button>
+                    </button>)}
                   </div>
                   <div className="hcn-table-wrapper" style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
                     <table className="hcn-table">
                       <thead>
                         <tr>
                           <th>اسم الباقة</th>
-                          <th>السعر (ألف ل.س)</th>
+                          <th>السعر (ل.س)</th>
                           <th>القنوات المتاحة</th>
-                          <th style={{ width: 60, textAlign: 'center' }}>حذف</th>
+                          {canEdit && <th style={{ width: 60, textAlign: 'center' }}>حذف</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -944,6 +1151,7 @@ export default function KnowledgeBaseTab() {
                                 className="hcn-input"
                                 style={{ height: 32, fontSize: 12 }}
                                 value={iptv.name}
+                                disabled={!canEdit}
                                 onChange={(e) => {
                                   const next = { ...companyData };
                                   next.iptv_packages[idx].name = e.target.value;
@@ -957,6 +1165,7 @@ export default function KnowledgeBaseTab() {
                                 className="hcn-input"
                                 style={{ height: 32, fontSize: 12 }}
                                 value={iptv.price}
+                                disabled={!canEdit}
                                 onChange={(e) => {
                                   const next = { ...companyData };
                                   next.iptv_packages[idx].price = e.target.value;
@@ -970,6 +1179,7 @@ export default function KnowledgeBaseTab() {
                                 className="hcn-input"
                                 style={{ height: 32, fontSize: 12 }}
                                 value={iptv.channels}
+                                disabled={!canEdit}
                                 onChange={(e) => {
                                   const next = { ...companyData };
                                   next.iptv_packages[idx].channels = e.target.value;
@@ -977,8 +1187,8 @@ export default function KnowledgeBaseTab() {
                                 }}
                               />
                             </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <button
+                            {canEdit && (<td style={{ textAlign: 'center' }}>
+                              <button type="button"
                                 onClick={() => {
                                   const next = { ...companyData };
                                   next.iptv_packages.splice(idx, 1);
@@ -989,7 +1199,7 @@ export default function KnowledgeBaseTab() {
                               >
                                 <Trash2 size={15} />
                               </button>
-                            </td>
+                            </td>)}
                           </tr>
                         ))}
                       </tbody>
@@ -998,22 +1208,21 @@ export default function KnowledgeBaseTab() {
                 </div>
               )}
 
-              {/* بيانات التواصل */}
               {companySubTab === 'contacts' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>بيانات وأقسام التواصل</span>
-                    <button
+                    {canEdit && (<button type="button"
                       onClick={() => {
                         const next = { ...companyData };
                         next.contacts = [...(next.contacts || []), { department: 'قسم جديد', number: '011-0000' }];
                         setCompanyData(next);
                       }}
-                      className="hcn-btn"
+                      className="hcn-btn-outlined"
                       style={{ fontSize: 12, padding: '4px 10px', gap: 4 }}
                     >
                       <Plus size={14} /> إضافة رقم
-                    </button>
+                    </button>)}
                   </div>
                   <div className="hcn-table-wrapper" style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
                     <table className="hcn-table">
@@ -1021,7 +1230,7 @@ export default function KnowledgeBaseTab() {
                         <tr>
                           <th>القسم المعني</th>
                           <th>رقم الهاتف / الواتساب</th>
-                          <th style={{ width: 60, textAlign: 'center' }}>حذف</th>
+                          {canEdit && <th style={{ width: 60, textAlign: 'center' }}>حذف</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -1033,6 +1242,7 @@ export default function KnowledgeBaseTab() {
                                 className="hcn-input"
                                 style={{ height: 32, fontSize: 12 }}
                                 value={c.department}
+                                disabled={!canEdit}
                                 onChange={(e) => {
                                   const next = { ...companyData };
                                   next.contacts[idx].department = e.target.value;
@@ -1046,6 +1256,7 @@ export default function KnowledgeBaseTab() {
                                 className="hcn-input"
                                 style={{ height: 32, fontSize: 12 }}
                                 value={c.number}
+                                disabled={!canEdit}
                                 onChange={(e) => {
                                   const next = { ...companyData };
                                   next.contacts[idx].number = e.target.value;
@@ -1053,8 +1264,8 @@ export default function KnowledgeBaseTab() {
                                 }}
                               />
                             </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <button
+                            {canEdit && (<td style={{ textAlign: 'center' }}>
+                              <button type="button"
                                 onClick={() => {
                                   const next = { ...companyData };
                                   next.contacts.splice(idx, 1);
@@ -1065,7 +1276,7 @@ export default function KnowledgeBaseTab() {
                               >
                                 <Trash2 size={15} />
                               </button>
-                            </td>
+                            </td>)}
                           </tr>
                         ))}
                       </tbody>
@@ -1078,47 +1289,44 @@ export default function KnowledgeBaseTab() {
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          3. تبويب الأدلة والكتيبات الفنية (PDF Guides)
-         ══════════════════════════════════════════════════════════════════════ */}
       {activeSubTab === 'pdfs' && (
         <div className="hcn-card" style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '20px' }}>
-          {/* منطقة الرفع الرسمية */}
-          <div style={{
-            border: '2px dashed var(--border-color)',
-            borderRadius: 'var(--radius-md)',
-            padding: '24px 20px',
-            textAlign: 'center',
-            background: 'var(--bg-paper)',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 8
-          }}>
-            <UploadCloud size={30} style={{ color: 'var(--primary)' }} />
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
-                إرفاق دليل أو كتيب فني جديد (PDF)
+          {canEdit && (
+            <div style={{
+              border: '2px dashed var(--border-color)',
+              borderRadius: 'var(--radius-md)',
+              padding: '24px 20px',
+              textAlign: 'center',
+              background: 'var(--bg-paper)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 8
+            }}>
+              <UploadCloud size={30} style={{ color: 'var(--primary)' }} />
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
+                  إرفاق دليل أو كتيب فني جديد (PDF)
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+                  الملفات المدعومة: PDF فقط — يتم اعتماد المحتوى الفني تلقائياً
+                </div>
               </div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-                الملفات المدعومة: PDF فقط — يتم اعتماد المحتوى الفني تلقائياً
-              </div>
+
+              <label className="hcn-btn-primary" style={{ cursor: 'pointer', gap: 6, marginTop: 4, height: 34, fontSize: 12, fontWeight: 600 }}>
+                {uploadingPdf ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
+                {uploadingPdf ? 'جاري الرفع...' : 'اختيار ملف PDF'}
+                <input
+                  type="file"
+                  accept=".pdf"
+                  style={{ display: 'none' }}
+                  onChange={handlePdfUpload}
+                  disabled={uploadingPdf}
+                />
+              </label>
             </div>
+          )}
 
-            <label className="hcn-btn-primary" style={{ cursor: 'pointer', gap: 6, marginTop: 4, height: 34, fontSize: 12, fontWeight: 600 }}>
-              {uploadingPdf ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
-              {uploadingPdf ? 'جاري الرفع...' : 'اختيار ملف PDF'}
-              <input
-                type="file"
-                accept=".pdf"
-                style={{ display: 'none' }}
-                onChange={handlePdfUpload}
-                disabled={uploadingPdf}
-              />
-            </label>
-          </div>
-
-          {/* قائمة الكتيبات */}
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>الأدلة الفنية المعتمدة ({pdfList.length})</div>
 
           {pdfLoading ? (
@@ -1158,8 +1366,6 @@ export default function KnowledgeBaseTab() {
                         {pdf.title}
                       </div>
                       <div style={{ display: 'flex', gap: 6, fontSize: 11, color: 'var(--text-disabled)', marginTop: 3 }}>
-                        <span>{pdf.pages} صفحة</span>
-                        <span>•</span>
                         <span>{pdf.size_kb} KB</span>
                         <span>•</span>
                         <span style={{ color: 'var(--success)' }}>معتمد</span>
@@ -1172,19 +1378,21 @@ export default function KnowledgeBaseTab() {
                       href={`${API}/api/rag/pdfs/download/${encodeURIComponent(pdf.filename)}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="hcn-btn"
+                      className="hcn-btn-outlined"
                       style={{ fontSize: 11, padding: '4px 10px', gap: 4 }}
                     >
                       <Download size={13} /> تحميل / معاينة
                     </a>
 
-                    <button
-                      onClick={() => handleDeletePdf(pdf.filename)}
-                      className="hcn-btn-ghost"
-                      style={{ color: 'var(--error)', fontSize: 11, padding: '4px 8px', gap: 4 }}
-                    >
-                      <Trash2 size={13} /> حذف
-                    </button>
+                    {canEdit && (
+                      <button type="button"
+                        onClick={() => handleDeletePdf(pdf.filename)}
+                        className="hcn-btn-ghost"
+                        style={{ color: 'var(--error)', fontSize: 11, padding: '4px 8px', gap: 4 }}
+                      >
+                        <Trash2 size={13} /> حذف
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -1192,69 +1400,7 @@ export default function KnowledgeBaseTab() {
           )}
         </div>
       )}
-
-      {/* ══════════════════════════════════════════════════════════════════════
-          4. تبويب اختبار دقة الاستجابة (RAG Tester)
-         ══════════════════════════════════════════════════════════════════════ */}
-      {activeSubTab === 'tester' && (
-        <div className="hcn-card" style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '20px' }}>
-          <div>
-            <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 4px 0' }}>اختبار استرجاع البيانات</h3>
-            <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: 0 }}>
-              التحقق من مطابقة استفسارات المشتركين مع البيانات المعتمدة في قاعدة المعرفة
-            </p>
-          </div>
-
-          <form onSubmit={handleTestSearch} style={{ display: 'flex', gap: 10 }}>
-            <input
-              type="text"
-              className="hcn-input"
-              placeholder="أدخل نص الاستفسار للاختبار..."
-              value={testQuery}
-              onChange={(e) => setTestQuery(e.target.value)}
-              style={{ flex: 1, height: 38, fontSize: 13 }}
-            />
-            <button type="submit" disabled={testingRAG} className="hcn-btn-primary" style={{ gap: 6, height: 38, fontSize: 13, fontWeight: 600 }}>
-              {testingRAG ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
-              {testingRAG ? 'جاري الفحص...' : 'فحص المطابقة'}
-            </button>
-          </form>
-
-          {testResult && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                <span className="hcn-badge" style={{ background: 'var(--success-bg)', color: 'var(--success)', fontSize: 12 }}>
-                  نسبة الدقة: {Math.round((testResult.similarity || 0.9) * 100)}%
-                </span>
-                <span className="hcn-badge" style={{ background: 'rgba(99,102,241,0.12)', color: 'var(--primary)', fontSize: 12 }}>
-                  السجلات المطابقة: {testResult.documents?.length || 0}
-                </span>
-              </div>
-
-              <div style={{ background: 'var(--bg-paper)', borderRadius: 'var(--radius-md)', padding: 14, border: '1px solid var(--border-color)' }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>
-                  المحتوى المسترجع المعتمد:
-                </div>
-                <pre style={{
-                  whiteSpace: 'pre-wrap',
-                  fontFamily: 'inherit',
-                  fontSize: 12,
-                  color: 'var(--text-secondary)',
-                  lineHeight: 1.6,
-                  margin: 0
-                }}>
-                  {testResult.matched_context || 'لا توجد نتائج مطابقة.'}
-                </pre>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ══════════════════════════════════════════════════════════════════════
-          مودال إضافة / تعديل سؤال (Modal)
-         ══════════════════════════════════════════════════════════════════════ */}
-      {modalOpen && (
+{modalOpen && (
         <div style={{
           position: 'fixed',
           inset: 0,
@@ -1271,7 +1417,7 @@ export default function KnowledgeBaseTab() {
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>
                 {modalMode === 'add' ? 'إضافة سؤال جديد' : 'تعديل السؤال المعتمد'}
               </h3>
-              <button onClick={() => setModalOpen(false)} className="hcn-btn-ghost" style={{ padding: 4 }}>
+              <button type="button" onClick={() => setModalOpen(false)} className="hcn-btn-ghost" style={{ padding: 4 }}>
                 <X size={18} />
               </button>
             </div>
@@ -1317,7 +1463,7 @@ export default function KnowledgeBaseTab() {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
-                <button type="button" onClick={() => setModalOpen(false)} className="hcn-btn" style={{ fontSize: 13, height: 34 }}>
+                <button type="button" onClick={() => setModalOpen(false)} className="hcn-btn-outlined" style={{ fontSize: 13, height: 34 }}>
                   إلغاء
                 </button>
                 <button type="submit" disabled={savingQa} className="hcn-btn-primary" style={{ gap: 6, fontSize: 13, height: 34, fontWeight: 600 }}>
@@ -1329,6 +1475,17 @@ export default function KnowledgeBaseTab() {
           </div>
         </div>
       )}
+
+      {/* Confirmation Modal */}
+      <ConfirmModal
+        isOpen={confirmAction.isOpen}
+        title={confirmAction.title}
+        message={confirmAction.message}
+        type="danger"
+        confirmText="تأكيد الحذف"
+        onConfirm={confirmAction.onConfirm}
+        onCancel={() => setConfirmAction({ isOpen: false })}
+      />
 
     </div>
   );

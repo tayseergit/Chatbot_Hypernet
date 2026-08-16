@@ -6,6 +6,7 @@ from typing import Optional, Dict, Any, Tuple
 from sqlalchemy.orm import Session
 from backend_service.core.database import SessionLocal
 from backend_service.core.models.admin import DashboardAdmin
+from backend_service.core.models.admin_role import AdminRole
 from backend_service.core.models.admin_session import AdminSession
 from backend_service.core.security import (
     hash_password,
@@ -29,7 +30,22 @@ class AdminAuthService:
         """Create a default super admin if no admins exist in database."""
         db = SessionLocal()
         try:
+            from backend_service.core.services.admin_management_service import AVAILABLE_PERMISSIONS
             admin_count = db.query(DashboardAdmin).count()
+            
+            # Ensure super_admin role exists
+            super_role = db.query(AdminRole).filter(AdminRole.name == "Super Admin").first()
+            if not super_role:
+                all_perms = [p["id"] for p in AVAILABLE_PERMISSIONS]
+                super_role = AdminRole(
+                    name="Super Admin",
+                    description="Has all permissions in the system",
+                    permissions=all_perms
+                )
+                db.add(super_role)
+                db.commit()
+                db.refresh(super_role)
+                
             if admin_count == 0:
                 default_username = "admin"
                 default_password = "Admin@Hypernet2026!"
@@ -38,7 +54,8 @@ class AdminAuthService:
                     password_hash=hash_password(default_password),
                     full_name="مدير النظام الرئيسي",
                     email="admin@hypernet.sy",
-                    role="super_admin",
+                    role_id=super_role.id,
+                    custom_permissions=["manage_admins"], # Redundant, but explicit
                     is_active=True,
                 )
                 db.add(default_admin)
@@ -62,7 +79,7 @@ class AdminAuthService:
         """Create a new admin manually."""
         db = SessionLocal()
         try:
-            existing = db.query(DashboardAdmin).filter(DashboardAdmin.username == username.strip()).first()
+            existing = db.query(DashboardAdmin).filter(DashboardAdmin.username == username.strip(), DashboardAdmin.is_deleted == False).first()
             if existing:
                 return False, "اسم المستخدم مسجل مسبقاً في النظام.", None
 
@@ -99,7 +116,7 @@ class AdminAuthService:
         db = SessionLocal()
         try:
             username_clean = username.strip()
-            admin = db.query(DashboardAdmin).filter(DashboardAdmin.username == username_clean).first()
+            admin = db.query(DashboardAdmin).filter(DashboardAdmin.username == username_clean, DashboardAdmin.is_deleted == False).first()
 
             if not admin:
                 logger.warning(f"[AUTH FAILED] Non-existent user '{username_clean}' from IP {ip_address}")
@@ -139,11 +156,17 @@ class AdminAuthService:
             admin.locked_until = None
             admin.last_login_at = now
 
+            # Calculate effective permissions
+            role_perms = admin.role.permissions if admin.role and admin.role.permissions else []
+            custom_perms = admin.custom_permissions or []
+            all_perms = list(set(role_perms + custom_perms))
+            
             # Issue JWT token (1 Hour validity)
             token, jti, expire_dt = create_access_token(
                 admin_id=admin.id,
                 username=admin.username,
-                role=admin.role,
+                role=admin.role.name if admin.role else "custom",
+                permissions=all_perms,
                 expires_minutes=DEFAULT_SESSION_DURATION_MINUTES,
             )
 
@@ -155,6 +178,8 @@ class AdminAuthService:
                 user_agent=user_agent,
                 is_revoked=False,
                 expires_at=expire_dt,
+                created_at=now,
+                last_activity_at=now,
             )
             db.add(new_session)
             db.commit()
@@ -171,7 +196,8 @@ class AdminAuthService:
                     "username": admin.username,
                     "full_name": admin.full_name,
                     "email": admin.email,
-                    "role": admin.role,
+                    "role": admin.role.name if admin.role else "custom",
+                    "permissions": all_perms,
                 }
             }
 
@@ -217,7 +243,8 @@ class AdminAuthService:
         db = SessionLocal()
         try:
             admin_id = int(sub)
-            admin = db.query(DashboardAdmin).filter(DashboardAdmin.id == admin_id, DashboardAdmin.is_active == True).first()
+            # 3. Verify Admin is still active and not deleted
+            admin = db.query(DashboardAdmin).filter(DashboardAdmin.id == admin_id, DashboardAdmin.is_active == True, DashboardAdmin.is_deleted == False).first()
             if not admin:
                 return None
 

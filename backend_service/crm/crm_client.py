@@ -27,6 +27,15 @@ class CRMClient:
         self._logger = logging.getLogger("crm_client")
         self._log_service = CRMLogService()
 
+    def clear_all_caches(self):
+        """Clear all CRM data caches."""
+        _phone_cache.clear()
+        _username_cache.clear()
+        _profile_cache.clear()
+        _packages_cache.clear()
+        _iptv_cache.clear()
+        self._logger.info("All CRM caches have been cleared.")
+
     def _get_headers(self) -> Dict[str, str]:
         """Generate headers with the valid Bearer token."""
         token = self._auth_manager.get_token()

@@ -7,9 +7,11 @@ import {
   Activity,
   ShieldCheck,
   Search,
-  Server
+  Server,
+  XCircle
 } from 'lucide-react';
 import AgentActionLogsTab from './AgentActionLogsTab';
+import { useAuth } from '../context/AuthContext';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -28,11 +30,16 @@ function StatCard({ label, value, sub, icon: Icon, iconColor, iconBg }) {
 }
 
 export default function OverviewTab({ setActiveTab }) {
+  const { admin } = useAuth();
   const [stats, setStats] = useState({
     total_sessions: 0,
     active_sessions: 0,
     total_actions: 0,
-    health: { ollama: 'متصل', crm: 'متصل' },
+    health: {
+      bot: 'جاري الفحص...', bot_latency: '...',
+      llm: 'جاري الفحص...', llm_latency: '...',
+      crm: 'جاري الفحص...', crm_latency: '...'
+    },
   });
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -53,6 +60,8 @@ export default function OverviewTab({ setActiveTab }) {
 
   useEffect(() => {
     loadData();
+    const intervalId = setInterval(loadData, 10 * 60 * 1000); // 10 minutes
+    return () => clearInterval(intervalId);
   }, []);
 
   return (
@@ -76,15 +85,6 @@ export default function OverviewTab({ setActiveTab }) {
           </h1>
         </div>
 
-        <button
-          onClick={loadData}
-          disabled={isRefreshing}
-          className="hcn-btn-primary"
-          style={{ gap: 8, fontSize: 13, height: 38, fontWeight: 600 }}
-        >
-          <RefreshCw size={15} style={{ animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }} />
-          تحديث المؤشرات
-        </button>
       </div>
 
       {/* ── بطاقات الإحصائيات المباشرة ── */}
@@ -99,7 +99,7 @@ export default function OverviewTab({ setActiveTab }) {
 
         <StatCard
           label="المشتركون الموثقون"
-          value={stats.active_sessions.toLocaleString()}
+          value={stats.authed_sessions !== undefined ? stats.authed_sessions.toLocaleString() : stats.active_sessions.toLocaleString()}
           icon={ShieldCheck}
           iconColor="var(--text-secondary)"
           iconBg="#f1f5f9"
@@ -115,10 +115,66 @@ export default function OverviewTab({ setActiveTab }) {
 
       </div>
 
-      {/* ── دمج صفحة سجل العمليات التفصيلي داخل الرئيسية ── */}
-      <div style={{ marginTop: 4 }}>
-        <AgentActionLogsTab />
+      {/* ── مراقبة صحة النظام ── */}
+      <div className="hcn-card" style={{ padding: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+          <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(99, 102, 241, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Server size={22} color="var(--primary)" />
+          </div>
+          <div>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>مراقبة صحة النظام</h3>
+
+          </div>
+        </div>
+
+        <div className="hcn-table-wrapper" style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
+          <table className="hcn-table">
+            <thead>
+              <tr>
+                <th>الخدمة / المكون</th>
+                <th>الحالة</th>
+                <th>زمن الاستجابة (Ping)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { name: 'حالة توافر البوت (Bot API)', status: stats.health?.bot, ping: stats.health?.bot_latency },
+                { name: 'اتصالية نظام العملاء (CRM API)', status: stats.health?.crm, ping: stats.health?.crm_latency },
+                { name: 'حالة خدمة الذكاء الاصطناعي (LLM)', status: stats.health?.llm, ping: stats.health?.llm_latency }
+              ].map((item, idx) => (
+                <tr key={idx}>
+                  <td style={{ fontWeight: 600 }}>{item.name}</td>
+                  <td>
+                    {item.status === 'متصل' ? (
+                      <span className="hcn-badge hcn-badge-success" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <CheckCircle2 size={14} /> متصل
+                      </span>
+                    ) : item.status === 'جاري الفحص...' || isRefreshing ? (
+                      <span className="hcn-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--bg-paper)', color: 'var(--text-secondary)' }}>
+                        <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} /> جاري الفحص...
+                      </span>
+                    ) : (
+                      <span className="hcn-badge hcn-badge-error" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <XCircle size={14} /> {item.status || 'غير متصل'}
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ fontFamily: 'monospace', fontWeight: 700, color: item.status === 'متصل' ? 'var(--primary)' : 'var(--text-secondary)' }}>
+                    {isRefreshing ? '...' : item.ping}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
+
+      {/* ── دمج صفحة سجل العمليات التفصيلي داخل الرئيسية ── */}
+      {admin?.permissions?.includes('view_system_logs') && (
+        <div style={{ marginTop: 4 }}>
+          <AgentActionLogsTab />
+        </div>
+      )}
 
     </div>
   );

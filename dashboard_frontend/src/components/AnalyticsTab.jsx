@@ -71,6 +71,8 @@ export default function AnalyticsTab() {
 
   useEffect(() => {
     fetchAnalytics();
+    const intervalId = setInterval(fetchAnalytics, 10 * 60 * 1000); // 10 minutes
+    return () => clearInterval(intervalId);
   }, []);
 
   const totalActions = data?.total_actions ?? 0;
@@ -109,15 +111,6 @@ export default function AnalyticsTab() {
           </h1>
         </div>
 
-        <button
-          onClick={fetchAnalytics}
-          disabled={loading}
-          className="hcn-btn-primary"
-          style={{ gap: 8, fontSize: 13, height: 38, fontWeight: 600 }}
-        >
-          <RefreshCw size={15} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
-          تحديث المؤشرات
-        </button>
       </div>
 
       {/* ── بطاقات المؤشرات الرئيسية (بيانات حقيقية من MySQL) ── */}
@@ -165,7 +158,7 @@ export default function AnalyticsTab() {
               <BarChart3 size={20} color="var(--info)" />
             </div>
             <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-              توزيع الطلبات حسب التصنيف (MySQL)
+              توزيع الطلبات حسب التصنيف
             </h3>
           </div>
 

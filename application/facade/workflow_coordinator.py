@@ -96,22 +96,30 @@ class WorkflowCoordinator:
                 self._gate.check_tool(tool_name)  # blocks if individual tool is off
 
             try:
-                # Use ToolExecutor directly (which also has Layer 3 check inside)
-                tool_res = self._tool_executor.execute(tool_name, decision.parameters)
+                # Bypass CRM call entirely if customer_id is missing or 'unknown'
+                if not customer_id or customer_id.lower() == "unknown":
+                    tool_res = {"success": False, "error": "unauthenticated"}
+                else:
+                    # Use ToolExecutor directly (which also has Layer 3 check inside)
+                    tool_res = self._tool_executor.execute(tool_name, decision.parameters)
+                    
                 crm_data = tool_res.get("data", {}) if isinstance(tool_res, dict) else tool_res
-                crm_result = type("CRMResult", (), {"success": True, "data": crm_data})()
+                is_success = tool_res.get("success", True) if isinstance(tool_res, dict) else True
+                crm_result = type("CRMResult", (), {"success": is_success, "data": crm_data})()
 
                 if self._action_log_service and session_id:
-                    self._action_log_service.log_action(
-                        session_id=session_id,
-                        customer_id=customer_id,
-                        intent=decision.intent,
-                        action_type="CRM_TOOL",
-                        tool_name=tool_name,
-                        parameters=decision.parameters,
-                        status="SUCCESS",
-                        result_summary=crm_data,
-                    )
+                    # Do not log CRM call if it was bypassed due to missing authentication
+                    if customer_id and customer_id.lower() != "unknown":
+                        self._action_log_service.log_action(
+                            session_id=session_id,
+                            customer_id=customer_id,
+                            intent=decision.intent,
+                            action_type="CRM_TOOL",
+                            tool_name=tool_name,
+                            parameters=decision.parameters,
+                            status="SUCCESS" if is_success else "FAILED",
+                            result_summary=tool_res if not is_success else crm_data,
+                        )
             except (PermissionDeniedException, AgentEmergencyStopException):
                 # Re-raise permission errors — do NOT swallow them
                 raise
@@ -183,6 +191,27 @@ class WorkflowCoordinator:
                 )
             else:
                 llm_answer = self._llm.generate_greeting(message_text)
+
+        if self._action_log_service and session_id:
+            llm_inputs = {
+                "question": message_text,
+                "requires": requires
+            }
+            if "CRM" in requires:
+                llm_inputs["crm_data"] = crm_data
+            if "RAG" in requires:
+                llm_inputs["rag_context"] = rag_context
+                
+            self._action_log_service.log_action(
+                session_id=session_id,
+                customer_id=customer_id,
+                intent=decision.intent,
+                action_type="LLM_GENERATION",
+                tool_name="llm_service",
+                parameters=llm_inputs,
+                status="SUCCESS",
+                result_summary={"response_excerpt": llm_answer[:200] + "..." if len(llm_answer) > 200 else llm_answer},
+            )
 
         self._logger.info(f"Workflow execution complete for '{decision.intent}'")
 

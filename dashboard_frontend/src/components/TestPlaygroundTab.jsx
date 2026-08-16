@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, RotateCcw, FlaskConical, Bot, User, CheckCircle2 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -28,6 +29,8 @@ function _appendToStorage(msg) {
 }
 
 export default function TestPlaygroundTab() {
+  const { admin } = useAuth();
+  const sessionId = `playground_admin_${admin?.username || 'session'}`;
   const [inputPrompt, setInputPrompt] = useState(
     () => localStorage.getItem(PLAYGROUND_DRAFT_KEY) || ''
   );
@@ -110,7 +113,7 @@ export default function TestPlaygroundTab() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            session_id: 'playground_admin_session',
+            session_id: sessionId,
             customer_id: 'HYP-64253',
             prompt: userPrompt,
           }),
@@ -144,11 +147,16 @@ export default function TestPlaygroundTab() {
     })();
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     setMessages([DEFAULT_MSG]);
     localStorage.removeItem(PLAYGROUND_MSGS_KEY);
     localStorage.removeItem(PLAYGROUND_DRAFT_KEY);
     localStorage.removeItem(PLAYGROUND_PENDING_KEY);
+    try {
+      await fetch(`${API}/api/sessions/${sessionId}/reset`, { method: 'POST' });
+    } catch (e) {
+      console.error('Failed to reset session on backend', e);
+    }
   };
 
   return (
@@ -215,6 +223,11 @@ export default function TestPlaygroundTab() {
                     نظام المساعد الذكي
                   </div>
                 )}
+                {msg.sender === 'user' && (
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#ffffff', marginBottom: 6 }}>
+                    أنت (مدير النظام)
+                  </div>
+                )}
                 <p style={{ margin: 0, whiteSpace: 'pre-line', fontSize: 14, lineHeight: 1.6 }}>
                   {msg.text}
                 </p>
@@ -222,6 +235,15 @@ export default function TestPlaygroundTab() {
                   {msg.time}
                 </span>
               </div>
+              {msg.sender === 'user' && (
+                <div style={{
+                  width: 36, height: 36, borderRadius: 10, background: 'rgba(79, 70, 229, 0.12)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0, marginRight: 12, alignSelf: 'flex-start'
+                }}>
+                  <User size={18} color="#4F46E5" />
+                </div>
+              )}
             </div>
           ))}
 

@@ -98,9 +98,10 @@ class ActionLogService:
         """
         Retrieve all recent action logs with optional filters for dashboard.
         """
+        from backend_service.core.models.session import Session as SessionModel
         db = SessionLocal()
         try:
-            query = db.query(AgentActionLog)
+            query = db.query(AgentActionLog).outerjoin(SessionModel, AgentActionLog.session_id == SessionModel.session_id)
             if action_type and action_type.upper() != "ALL":
                 query = query.filter(AgentActionLog.action_type == action_type.upper())
             if status and status.upper() != "ALL":
@@ -111,7 +112,9 @@ class ActionLogService:
                     (AgentActionLog.session_id.like(s)) |
                     (AgentActionLog.customer_id.like(s)) |
                     (AgentActionLog.tool_name.like(s)) |
-                    (AgentActionLog.intent.like(s))
+                    (AgentActionLog.intent.like(s)) |
+                    (SessionModel.user_name.like(s)) |
+                    (SessionModel.user_id.like(s))
                 )
             return query.order_by(AgentActionLog.created_at.desc()).limit(limit).all()
         finally:

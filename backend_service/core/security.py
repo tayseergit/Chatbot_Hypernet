@@ -47,6 +47,7 @@ def create_access_token(
     admin_id: int,
     username: str,
     role: str = "super_admin",
+    permissions: list = None,
     expires_minutes: int = DEFAULT_SESSION_DURATION_MINUTES,
     custom_jti: Optional[str] = None,
 ) -> tuple[str, str, datetime.datetime]:
@@ -63,6 +64,7 @@ def create_access_token(
         "sub": str(admin_id),
         "username": username,
         "role": role,
+        "permissions": permissions or [],
         "jti": jti,
         "iat": int(now.timestamp()),
         "exp": int(expire.timestamp()),

@@ -1,15 +1,17 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Search, Filter, ChevronLeft, ChevronRight, X,
-  User, CheckCircle2, MoreVertical, MessageSquare, ShieldAlert,
+  User, CheckCircle2, MoreVertical, MessageSquare, ShieldAlert, AlertCircle,
   Clock, MapPin, RefreshCw, Trash2, LogOut, Send, Image as ImageIcon, ZoomIn, ExternalLink
 } from 'lucide-react';
 import { usePasswordAuth, PasswordPromptModal } from './PasswordPromptModal';
+import ConfirmModal from './ConfirmModal';
+import { useAuth } from '../context/AuthContext';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 /* ─────────────── مكوّن: صف الجدول ─────────────── */
-function TableRow({ cust, selected, onSelect, onOpen, onDelete }) {
+function TableRow({ cust, selected, onSelect, onOpen, onDelete, hasPermission }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const isAuthed = cust.auth_state === 'AUTHENTICATED' || cust.authenticated;
   const authLabel = isAuthed ? 'موثق' : 'غير موثق';
@@ -38,6 +40,11 @@ function TableRow({ cust, selected, onSelect, onOpen, onDelete }) {
           <span style={{ fontSize: 12, color: 'var(--text-disabled)', fontFamily: 'monospace' }}>
             ID: {cust.session_id}
           </span>
+          {cust.user_id && (
+            <span style={{ fontSize: 12, color: 'var(--primary)', fontFamily: 'monospace', opacity: 0.8 }}>
+              TG: {cust.user_id}
+            </span>
+          )}
         </div>
       </td>
       <td style={{ padding: '16px', fontWeight: 600 }}>{cust.customer_id}</td>
@@ -95,26 +102,28 @@ function TableRow({ cust, selected, onSelect, onOpen, onDelete }) {
             >
               <MessageSquare size={16} color="var(--primary)" /> عرض المحادثة
             </button>
-            <button
-              onClick={() => onDelete(cust.session_id)}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                padding: '10px 16px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                fontSize: 13,
-                color: 'var(--error)',
-                cursor: 'pointer',
-                textAlign: 'right',
-                width: '100%'
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = 'var(--error-bg)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-            >
-              <Trash2 size={16} color="var(--error)" /> حذف الجلسة
-            </button>
+            {hasPermission('delete_chat_sessions') && (
+              <button
+                onClick={() => onDelete(cust.session_id)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  padding: '10px 16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  fontSize: 13,
+                  color: 'var(--error)',
+                  cursor: 'pointer',
+                  textAlign: 'right',
+                  width: '100%'
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--error-bg)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                <Trash2 size={16} color="var(--error)" /> حذف الجلسة
+              </button>
+            )}
           </div>
         )}
       </td>
@@ -125,15 +134,17 @@ function TableRow({ cust, selected, onSelect, onOpen, onDelete }) {
 /* ─────────────── مكوّن: نافذة التفاصيل والمحادثة (Modal) ─────────────── */
 const DETAIL_TABS = [
   { key: 'chat',     label: 'المحادثة الحية', icon: MessageSquare },
-  { key: 'overview', label: 'بيانات المشترك', icon: User },
+  { key: 'session',  label: 'بيانات الجلسة', icon: User },
+  { key: 'crm',      label: 'بيانات Hypernet (CRM)', icon: ShieldAlert },
 ];
 
-function DetailModal({ cust, onClose, onDelete, requireAuth }) {
+function DetailModal({ cust, onClose, onDelete, requireAuth, hasPermission }) {
   const [tab, setTab] = useState('chat');
   const [messages, setMessages] = useState([]);
   const [loadingMsg, setLoadingMsg] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [sendingReply, setSendingReply] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
   const chatEndRef = useRef(null);
 
@@ -168,30 +179,51 @@ function DetailModal({ cust, onClose, onDelete, requireAuth }) {
     }
   }, [messages, tab]);
 
-  const handleSendReply = async () => {
-    if (!replyText.trim() || sendingReply) return;
-    requireAuth('إرسال رد للمشترك', async () => {
-      setSendingReply(true);
-      try {
-        const res = await fetch(`${API_BASE}/api/sessions/${cust.session_id}/reply`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: replyText.trim() })
-        });
-        if (res.ok) {
-          setReplyText('');
-          fetchMessages();
-        }
-      } catch (err) {
-        console.error('Failed to send reply:', err);
-      } finally {
-        setSendingReply(false);
-      }
-    });
-  };
+  const [crmOverview, setCrmOverview] = useState(null);
+  const [loadingOverview, setLoadingOverview] = useState(false);
 
   const isAuthed = cust.auth_state === 'AUTHENTICATED' || cust.authenticated;
   const authLabel = isAuthed ? 'موثق' : 'غير موثق';
+
+  useEffect(() => {
+    if (tab === 'crm' && isAuthed && !cust.is_playground && cust.customer_id && cust.customer_id !== 'غير مرتبط') {
+      setLoadingOverview(true);
+      fetch(`${API_BASE}/api/crm/overview/${cust.customer_id}`)
+        .then(r => r.json())
+        .then(data => {
+          setCrmOverview(data);
+          setLoadingOverview(false);
+        })
+        .catch(err => {
+          console.error('Failed to fetch CRM overview:', err);
+          setLoadingOverview(false);
+        });
+    }
+  }, [tab, cust.customer_id, cust.is_playground, isAuthed]);
+
+  const handleSendReply = () => {
+    if (!replyText.trim() || sendingReply) return;
+    setShowConfirm(true);
+  };
+
+  const executeSendReply = async () => {
+    setSendingReply(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/sessions/${cust.session_id}/reply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: replyText.trim() })
+      });
+      if (res.ok) {
+        setReplyText('');
+        fetchMessages();
+      }
+    } catch (err) {
+      console.error('Failed to send reply:', err);
+    } finally {
+      setSendingReply(false);
+    }
+  };
 
   // Helper to render message content (Text or Photo)
   const renderMessageContent = (text, isUser) => {
@@ -221,9 +253,9 @@ function DetailModal({ cust, onClose, onDelete, requireAuth }) {
               style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
               onError={(e) => { e.target.style.display = 'none'; }}
             />
-            <div style={{
-              position: 'absolute', bottom: 6, right: 6,
-              background: 'rgba(0,0,0,0.6)', color: '#fff',
+            <div style={{ 
+              position: 'absolute', bottom: 6, right: 6, 
+              background: 'rgba(0,0,0,0.6)', color: '#fff', 
               padding: '4px 8px', borderRadius: 6, fontSize: 11,
               display: 'flex', alignItems: 'center', gap: 4
             }}>
@@ -238,33 +270,49 @@ function DetailModal({ cust, onClose, onDelete, requireAuth }) {
   };
 
   return (
-    <div className="hcn-modal-overlay" onClick={onClose}>
-      <div
-        className="hcn-modal"
-        style={{ maxWidth: 840, width: '92%', height: '85vh', padding: 0, overflow: 'hidden' }}
-        onClick={e => e.stopPropagation()}
-      >
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 9999, padding: '40px'
+    }}>
+      <div style={{
+        background: 'var(--bg-paper)',
+        borderRadius: '24px',
+        width: '100%', maxWidth: '800px', height: '100%', maxHeight: '85vh',
+        display: 'flex', flexDirection: 'column',
+        boxShadow: '0 25px 50px -12px rgba(0,0,0,0.3)',
+        overflow: 'hidden'
+      }}>
         {/* ── Modal Header ── */}
-        <div style={{ padding: '18px 28px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-paper)' }}>
-          <div>
-            <h2 className="hcn-title" style={{ fontSize: 18, marginBottom: 2 }}>
-              {cust.user_name || cust.session_id}
-            </h2>
-            <div style={{ display: 'flex', gap: 8, fontSize: 12, color: 'var(--text-disabled)', alignItems: 'center' }}>
-              <span>ID: <strong style={{ color: 'var(--text-primary)', fontFamily: 'monospace' }}>{cust.session_id}</strong></span>
-              <span>•</span>
-              <span className={`hcn-badge ${isAuthed ? 'hcn-badge-success' : 'hcn-badge-warning'}`}>{authLabel}</span>
+        <div style={{ padding: '24px 28px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-default)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--info-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <User size={24} color="var(--primary)" />
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontWeight: 800, fontSize: 18 }}>{cust.user_name || cust.session_id}</span>
+                <span className={`hcn-badge ${isAuthed ? 'hcn-badge-success' : 'hcn-badge-warning'}`}>{authLabel}</span>
+                <span style={{ fontSize: 12, color: 'var(--text-disabled)', fontFamily: 'monospace' }}>• ID: {cust.session_id}</span>
+              </div>
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button 
-              onClick={() => { onDelete(cust.session_id); onClose(); }} 
-              className="hcn-btn-outlined" 
-              style={{ color: 'var(--error)', borderColor: 'var(--error)', padding: '6px 12px', fontSize: 12, gap: 4 }}
-            >
-              <Trash2 size={14} /> حذف
-            </button>
-            <button onClick={onClose} className="hcn-btn-icon">
+          <div style={{ display: 'flex', gap: 12 }}>
+            {hasPermission('delete_chat_sessions') && (
+              <button 
+                onClick={() => {
+                  requireAuth('حذف الجلسة نهائياً', () => {
+                    onDelete(cust.session_id);
+                    onClose();
+                  });
+                }} 
+                className="hcn-btn-secondary" 
+                style={{ color: 'var(--error)', borderColor: 'var(--error)' }}
+              >
+                <Trash2 size={16} /> حذف
+              </button>
+            )}
+            <button onClick={onClose} className="hcn-btn-icon" style={{ background: 'var(--bg-hover)' }}>
               <X size={20} />
             </button>
           </div>
@@ -341,31 +389,33 @@ function DetailModal({ cust, onClose, onDelete, requireAuth }) {
               </div>
 
               {/* ── شريط الرد اليدوي ── */}
-              <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', background: 'var(--bg-paper)', display: 'flex', gap: 12, alignItems: 'center' }}>
-                <input
-                  type="text"
-                  className="hcn-input"
-                  placeholder="اكتب رداً يدويًا للمشترك عبر تيليجرام..."
-                  value={replyText}
-                  onChange={e => setReplyText(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSendReply();
-                    }
-                  }}
-                  style={{ flex: 1 }}
-                />
-                <button
-                  onClick={handleSendReply}
-                  disabled={sendingReply || !replyText.trim()}
-                  className="hcn-btn-primary"
-                  style={{ padding: '10px 20px', gap: 8, display: 'flex', alignItems: 'center', minWidth: 120, justifyContent: 'center' }}
-                >
-                  <Send size={16} />
-                  {sendingReply ? 'جاري الإرسال...' : 'إرسال رد'}
-                </button>
-              </div>
+              {hasPermission('reply_chat_sessions') && (
+                <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', background: 'var(--bg-paper)', display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    className="hcn-input"
+                    placeholder="اكتب رداً يدويًا للمشترك عبر تيليجرام..."
+                    value={replyText}
+                    onChange={e => setReplyText(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendReply();
+                      }
+                    }}
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    onClick={handleSendReply}
+                    disabled={sendingReply || !replyText.trim()}
+                    className="hcn-btn-primary"
+                    style={{ padding: '10px 20px', gap: 8, display: 'flex', alignItems: 'center', minWidth: 120, justifyContent: 'center' }}
+                  >
+                    <Send size={16} />
+                    {sendingReply ? 'جاري الإرسال...' : 'إرسال رد'}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -387,10 +437,11 @@ function DetailModal({ cust, onClose, onDelete, requireAuth }) {
             </div>
           )}
 
-          {/* نظرة عامة */}
-          {tab === 'overview' && (
+          {/* بيانات الجلسة */}
+          {tab === 'session' && (
             <div style={{ padding: '28px', overflowY: 'auto' }}>
               <div className="hcn-card" style={{ padding: 24, display: 'flex', flexDirection: 'column', border: '1px solid var(--border)', boxShadow: 'none' }}>
+                <h3 style={{ marginTop: 0, marginBottom: 16, fontSize: 16 }}>بيانات الجلسة</h3>
                 {[
                   { label: 'اسم المشترك (Telegram)', value: cust.user_name || cust.session_id },
                   { label: 'رقم المشترك (Telegram ID)', value: cust.user_id || 'غير متوفر' },
@@ -411,6 +462,65 @@ function DetailModal({ cust, onClose, onDelete, requireAuth }) {
               </div>
             </div>
           )}
+
+          {/* بيانات CRM */}
+          {tab === 'crm' && (
+            <div style={{ padding: '28px', overflowY: 'auto' }}>
+              {loadingOverview && (
+                <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-disabled)' }}>
+                  جاري تحميل بيانات العميل من نظام Hypernet CRM...
+                </div>
+              )}
+
+              {crmOverview && !loadingOverview && (
+                <div className="hcn-card" style={{ padding: 24, display: 'flex', flexDirection: 'column', border: '1px solid var(--border)', boxShadow: 'none' }}>
+                  <h3 style={{ marginTop: 0, marginBottom: 16, fontSize: 16, color: 'var(--primary)' }}>بيانات العميل (Hypernet CRM)</h3>
+                  {[
+                    { label: 'اسم الحساب', value: crmOverview.username || '-' },
+                    { label: 'الاسم الكامل', value: [crmOverview.firstname, crmOverview.lastname].filter(Boolean).join(' ') || '-' },
+                    { label: 'رقم الهاتف', value: crmOverview.phone || '-' },
+                    { label: 'الرصيد', value: crmOverview.balance !== undefined ? `${crmOverview.balance}` : '-' },
+                    { label: 'الحالة', value: crmOverview.status || '-' },
+                    { label: 'نوع الاشتراك', value: crmOverview.profile_name || '-' },
+                    { label: 'تاريخ الانتهاء', value: crmOverview.expiration || '-' },
+                    { label: 'الحصة المتبقية', value: crmOverview.remaining_rx || '-' },
+                    { label: 'Mac Address', value: crmOverview.cpe_mac || '-' },
+                  ].map((field, i, arr) => (
+                    <div key={field.label} style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      padding: '14px 0', borderBottom: i !== arr.length - 1 ? '1px solid var(--border)' : 'none'
+                    }}>
+                      <span style={{ fontSize: 13, color: 'var(--text-disabled)', fontWeight: 600 }}>{field.label}</span>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{field.value}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {!loadingOverview && !crmOverview && isAuthed && cust.customer_id && cust.customer_id !== 'غير مرتبط' && !cust.is_playground && (
+                <div style={{ textAlign: 'center', padding: '24px', color: 'var(--error)' }}>
+                  لم يتم العثور على بيانات لهذا العميل في نظام CRM.
+                </div>
+              )}
+              
+              {(!isAuthed || cust.customer_id === 'غير مرتبط' || !cust.customer_id) && !cust.is_playground && (
+                <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-disabled)' }}>
+                  المشترك غير موثق أو غير مرتبط بحساب CRM. لا يمكن جلب بيانات النظام.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Confirmation Modal */}
+          <ConfirmModal
+            isOpen={showConfirm}
+            title="تأكيد إرسال الرد"
+            message="هل أنت متأكد من إرسال هذا الرد للمشترك عبر تيليجرام؟"
+            type="primary"
+            confirmText="تأكيد الإرسال"
+            onConfirm={() => { setShowConfirm(false); executeSendReply(); }}
+            onCancel={() => setShowConfirm(false)}
+          />
         </div>
       </div>
     </div>
@@ -424,13 +534,12 @@ export default function CrmLookupTab() {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState([]);
   const [openCustomer, setOpenCustomer] = useState(null);
-  const [showFilter, setShowFilter] = useState(false);
   const [page, setPage] = useState(0);
   const rowsPerPage = 10;
-  const [filterAuth, setFilterAuth] = useState('All');
   const [activeTab, setActiveTab] = useState('all');
 
   const { requireAuth, modalProps } = usePasswordAuth();
+  const { hasPermission } = useAuth();
 
   const fetchCustomers = () => {
     fetch(`${API_BASE}/api/crm/customers`)
@@ -479,6 +588,8 @@ export default function CrmLookupTab() {
   // ── Global search and multi-criteria filter ──
   const filtered = useMemo(() => {
     return customers.filter(c => {
+      if (c.is_playground) return false;
+
       const q = search.toLowerCase().trim();
       const sId = (c.session_id || '').toLowerCase();
       const uName = (c.user_name || '').toLowerCase();
@@ -487,7 +598,6 @@ export default function CrmLookupTab() {
       const matchSearch = !q || sId.includes(q) || uName.includes(q) || cId.includes(q);
 
       const isAuthed = c.auth_state === 'AUTHENTICATED' || c.authenticated;
-      const matchAuth = filterAuth === 'All' || (filterAuth === 'AUTHENTICATED' ? isAuthed : !isAuthed);
 
       const matchTab = activeTab === 'all'
         ? true
@@ -495,9 +605,9 @@ export default function CrmLookupTab() {
           ? isAuthed
           : !isAuthed;
 
-      return matchSearch && matchAuth && matchTab;
+      return matchSearch && matchTab;
     });
-  }, [search, filterAuth, activeTab, customers]);
+  }, [search, activeTab, customers]);
 
   const handleSearchChange = (e) => {
     setSearch(e.target.value);
@@ -506,11 +616,6 @@ export default function CrmLookupTab() {
 
   const handleTabChange = (tabKey) => {
     setActiveTab(tabKey);
-    setPage(0);
-  };
-
-  const handleFilterChange = (filterVal) => {
-    setFilterAuth(filterVal);
     setPage(0);
   };
 
@@ -563,36 +668,12 @@ export default function CrmLookupTab() {
               style={{ paddingRight: 44 }}
             />
           </div>
-          <button
-            onClick={() => setShowFilter(v => !v)}
-            className="hcn-btn-outlined"
-            style={{ color: showFilter ? 'var(--primary)' : 'var(--text-secondary)', borderColor: showFilter ? 'var(--primary)' : 'var(--border-strong)' }}
-          >
-            <Filter size={18} /> فلتر
-          </button>
+          {selected.length > 0 && hasPermission('delete_chat_sessions') && (
+            <button onClick={handleBatchDelete} className="hcn-btn-secondary" style={{ color: 'var(--error)', borderColor: 'var(--error)' }}>
+              <Trash2 size={16} /> حذف المحدد ({selected.length})
+            </button>
+          )}
         </div>
-
-        {/* لوحة الفلاتر المنبثقة */}
-        {showFilter && (
-          <div style={{ padding: '16px 24px', background: 'var(--bg-neutral)', borderBottom: '1px solid var(--border)', display: 'flex', gap: 16, alignItems: 'center' }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>حالة المصادقة:</span>
-            <div className="hcn-pill-group">
-              {[
-                { key: 'All', label: 'الكل' },
-                { key: 'AUTHENTICATED', label: 'موثق' },
-                { key: 'UNAUTHENTICATED', label: 'غير موثق' },
-              ].map(f => (
-                <button
-                  key={f.key}
-                  className={`hcn-pill ${filterAuth === f.key ? 'active-primary' : ''}`}
-                  onClick={() => handleFilterChange(f.key)}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* الجدول */}
         <div className="hcn-table-wrapper">
@@ -607,33 +688,37 @@ export default function CrmLookupTab() {
                     style={{ accentColor: 'var(--primary)', width: 18, height: 18, cursor: 'pointer' }}
                   />
                 </th>
-                {['المشترك / الجلسة', 'معرف العميل (CRM)', 'المصادقة', 'آخر تفاعل', 'تاريخ البدء', ''].map(h => (
-                  <th key={h}>{h}</th>
-                ))}
+                <th>المشترك / الجلسة</th>
+                <th>معرف العميل (CRM)</th>
+                <th>المصادقة</th>
+                <th>آخر تفاعل</th>
+                <th>تاريخ البدء</th>
+                <th style={{ width: 60 }}></th>
               </tr>
             </thead>
             <tbody>
-              {loading && customers.length === 0 ? (
+              {loading ? (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: 32, color: 'var(--text-disabled)' }}>
-                    جاري تحميل الجلسات...
+                  <td colSpan={7} style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-disabled)' }}>
+                    جاري تحميل بيانات العملاء...
                   </td>
                 </tr>
               ) : paginated.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: 32, color: 'var(--text-disabled)' }}>
-                    لا توجد جلسات مطابقة للبحث
+                  <td colSpan={7} style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-disabled)' }}>
+                    لا يوجد عملاء مطابقين للبحث
                   </td>
                 </tr>
               ) : (
-                paginated.map(cust => (
+                paginated.map(c => (
                   <TableRow
-                    key={cust.session_id}
-                    cust={cust}
-                    selected={selected.includes(cust.session_id)}
+                    key={c.session_id}
+                    cust={c}
+                    selected={selected.includes(c.session_id)}
                     onSelect={toggleSelect}
                     onOpen={setOpenCustomer}
                     onDelete={handleDeleteSession}
+                    hasPermission={hasPermission}
                   />
                 ))
               )}
@@ -641,69 +726,41 @@ export default function CrmLookupTab() {
           </table>
         </div>
 
-        {/* الترقيم (Pagination) */}
-        <div className="hcn-pagination">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div style={{ padding: '16px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--border)' }}>
             <span style={{ fontSize: 13, color: 'var(--text-disabled)' }}>
-              عرض {paginated.length} من أصل {filtered.length} جلسة
+              عرض {page * rowsPerPage + 1} إلى {Math.min((page + 1) * rowsPerPage, filtered.length)} من {filtered.length} عميل
             </span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                className="hcn-btn-secondary"
+                disabled={page === 0}
+                onClick={() => setPage(p => p - 1)}
+                style={{ padding: '8px 12px' }}
+              >
+                <ChevronRight size={18} />
+              </button>
+              <button
+                className="hcn-btn-secondary"
+                disabled={page >= totalPages - 1}
+                onClick={() => setPage(p => p + 1)}
+                style={{ padding: '8px 12px' }}
+              >
+                <ChevronLeft size={18} />
+              </button>
+            </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button
-              onClick={() => setPage(p => Math.max(0, p - 1))}
-              disabled={page === 0}
-              className="hcn-btn-icon"
-              style={{ opacity: page === 0 ? 0.4 : 1 }}
-            >
-              <ChevronRight size={18} />
-            </button>
-            <span style={{ fontSize: 13, fontFamily: 'monospace', fontWeight: 600, padding: '0 8px' }}>
-              {page + 1} / {totalPages}
-            </span>
-            <button
-              onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-              disabled={page >= totalPages - 1}
-              className="hcn-btn-icon"
-              style={{ opacity: page >= totalPages - 1 ? 0.4 : 1 }}
-            >
-              <ChevronLeft size={18} />
-            </button>
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* شريط الإجراءات الجماعية (Floating Batch Bar) */}
-      {selected.length > 0 && (
-        <div className="hcn-batch-bar">
-          <span style={{ fontSize: 14, fontWeight: 700 }}>
-            تم تحديد {selected.length} جلسة
-          </span>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            <button
-              onClick={handleBatchDelete}
-              className="hcn-btn-primary"
-              style={{ background: 'var(--error)', padding: '6px 14px', fontSize: 13, gap: 6 }}
-            >
-              <Trash2 size={16} /> حذف المحددين
-            </button>
-            <button
-              onClick={() => setSelected([])}
-              className="hcn-btn-outlined"
-              style={{ color: '#fff', borderColor: 'rgba(255,255,255,0.4)', padding: '6px 14px', fontSize: 13 }}
-            >
-              إلغاء التحديد
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Modal تفاصيل ومحادثة المشترك المنبثقة الحقيقية */}
       {openCustomer && (
         <DetailModal
           cust={openCustomer}
           onClose={() => setOpenCustomer(null)}
           onDelete={handleDeleteSession}
           requireAuth={requireAuth}
+          hasPermission={hasPermission}
         />
       )}
     </div>

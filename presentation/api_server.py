@@ -3,7 +3,7 @@ import time
 import json
 import datetime
 from typing import Optional, List, Dict, Any
-from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, HTTPException, Query
+from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, HTTPException, Query, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -74,10 +74,12 @@ def create_app(facade) -> FastAPI:
         password: str
 
     @app.post("/api/auth/login")
-    def admin_login(req: LoginRequest):
+    def admin_login(req: LoginRequest, request: Request):
         from backend_service.core.services.admin_auth_service import AdminAuthService
         auth_service = AdminAuthService()
-        success, msg, data = auth_service.authenticate_admin(req.username, req.password)
+        ip_address = request.client.host if request.client else None
+        user_agent = request.headers.get("user-agent")
+        success, msg, data = auth_service.authenticate_admin(req.username, req.password, ip_address=ip_address, user_agent=user_agent)
         if success:
             return data
         else:
@@ -90,15 +92,44 @@ def create_app(facade) -> FastAPI:
         auth_service.logout_admin(token)
         return {"success": True}
 
+    # --- Authorization Dependency ---
+    from fastapi.security import OAuth2PasswordBearer
+    from backend_service.core.security import decode_access_token
+    
+    oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+
+    def get_current_admin(token: str = Depends(oauth2_scheme)):
+        payload = decode_access_token(token)
+        if not payload:
+            raise HTTPException(status_code=401, detail="Invalid or expired token")
+        return payload
+
+    def require_permissions(required_perms: List[str]):
+        def dependency(current_admin: dict = Depends(get_current_admin)):
+            admin_perms = current_admin.get("permissions", [])
+            for perm in required_perms:
+                if perm not in admin_perms:
+                    raise HTTPException(status_code=403, detail="الصلاحيات غير كافية لإجراء هذه العملية")
+            return current_admin
+        return dependency
+
+    def require_any_permission(allowed_perms: List[str]):
+        def dependency(current_admin: dict = Depends(get_current_admin)):
+            admin_perms = current_admin.get("permissions", [])
+            if not any(perm in admin_perms for perm in allowed_perms):
+                raise HTTPException(status_code=403, detail="الصلاحيات غير كافية لإجراء هذه العملية")
+            return current_admin
+        return dependency
+
     class VerifyActionRequest(BaseModel):
         password: str
 
     @app.post("/api/auth/verify-action")
-    def admin_verify_action(req: VerifyActionRequest):
+    def admin_verify_action(req: VerifyActionRequest, current_admin: dict = Depends(get_current_admin)):
         from backend_service.core.services.admin_auth_service import AdminAuthService
         auth_service = AdminAuthService()
-        # Verify the action by authenticating the default 'admin' user with the provided password
-        success, msg, data = auth_service.authenticate_admin("admin", req.password)
+        username = current_admin.get("username")
+        success, msg, data = auth_service.authenticate_admin(username, req.password)
         if success:
             return {"status": "success", "admin": data.get("admin")}
         else:
@@ -142,7 +173,7 @@ def create_app(facade) -> FastAPI:
         }
 
     @app.get("/api/traces")
-    def get_traces():
+    def get_traces(admin: dict = Depends(require_permissions(["view_system_logs"]))):
         """
         API endpoint to read the traces.log file for the dashboard.
         """
@@ -185,36 +216,94 @@ def create_app(facade) -> FastAPI:
         return {"traces": parsed_traces[::-1]}
 
     @app.get("/api/overview/stats")
-    def get_overview_stats():
+    def get_overview_stats(admin: dict = Depends(require_permissions(["view_dashboard"]))):
         db = SessionLocal()
         try:
-            total_sessions = db.query(SessionModel).count()
+            from sqlalchemy import func
+            total_sessions = db.query(func.count(func.distinct(SessionModel.user_id))).filter(SessionModel.user_id.isnot(None)).scalar() or 0
             total_actions = db.query(AgentActionLog).count()
-            active_sessions = db.query(SessionModel).filter(SessionModel.is_active == True).count()
+            active_sessions = db.query(func.count(func.distinct(SessionModel.user_id))).filter(SessionModel.user_id.isnot(None), SessionModel.is_active == True).scalar() or 0
+            authed_sessions = db.query(func.count(func.distinct(SessionModel.user_id))).filter(SessionModel.user_id.isnot(None), SessionModel.authed == True).scalar() or 0
         except Exception as e:
             print(f"Error fetching stats: {e}")
             total_sessions = 0
             total_actions = 0
             active_sessions = 0
+            authed_sessions = 0
         finally:
             db.close()
     
+        import requests
+        import time
+        
+        # Check CRM
+        crm_latency = "N/A"
+        crm_status = "غير متصل"
+        try:
+            crm_url = facade._config.crm.base_url
+            start = time.time()
+            res = requests.get(crm_url.replace('/api/crm', '/'), timeout=2)
+            crm_latency = f"{int((time.time() - start) * 1000)}ms"
+            crm_status = "متصل"
+        except Exception:
+            pass
+        # Check LLM
+        llm_latency = "N/A"
+        llm_status = "غير متصل"
+        try:
+            provider = facade._config.llm.provider
+            start = time.time()
+            if provider == "gemini":
+                res = requests.get("https://generativelanguage.googleapis.com", timeout=2)
+                llm_latency = f"{int((time.time() - start) * 1000)}ms"
+                llm_status = "متصل"
+            elif provider == "ollama":
+                res = requests.get(facade._config.llm.ollama_url.replace('/api/generate', '/'), timeout=2)
+                llm_latency = f"{int((time.time() - start) * 1000)}ms"
+                llm_status = "متصل"
+            elif provider == "lmstudio":
+                res = requests.get(facade._config.llm.lmstudio_url.replace('/v1/chat/completions', '/v1/models'), timeout=2)
+                llm_latency = f"{int((time.time() - start) * 1000)}ms"
+                llm_status = "متصل"
+        except Exception:
+            pass
+            
+        # Check Bot (Self)
+        bot_latency = "N/A"
+        bot_status = "غير متصل"
+        try:
+            start = time.time()
+            res = requests.get("http://127.0.0.1:8000/health", timeout=2)
+            bot_latency = f"{int((time.time() - start) * 1000)}ms"
+            bot_status = "متصل"
+        except Exception:
+            pass
+
         return {
             "total_sessions": total_sessions,
             "active_sessions": active_sessions,
+            "authed_sessions": authed_sessions,
             "total_actions": total_actions,
             "health": {
-                "ollama": "Connected",
-                "crm": "Connected"
+                "bot": bot_status,
+                "bot_latency": bot_latency,
+                "llm": llm_status,
+                "llm_latency": llm_latency,
+                "crm": crm_status,
+                "crm_latency": crm_latency
             }
         }
     
     @app.get("/api/analytics/summary")
-    def get_analytics_summary():
+    def get_analytics_summary(
+        timeframe: str = Query("month", description="Timeframe for analytics (today, week, month, year)"),
+        admin: dict = Depends(require_permissions(["view_dashboard"]))
+    ):
         db = SessionLocal()
         try:
-            total_sessions = db.query(SessionModel).count()
-            authed_sessions = db.query(SessionModel).filter(SessionModel.authed == True).count()
+            from sqlalchemy import func
+            total_sessions = db.query(func.count(func.distinct(SessionModel.user_id))).filter(SessionModel.user_id.isnot(None)).scalar() or 0
+            authed_sessions = db.query(func.count(func.distinct(SessionModel.user_id))).filter(SessionModel.user_id.isnot(None), SessionModel.authed == True).scalar() or 0
             total_actions = db.query(AgentActionLog).count()
     
             from sqlalchemy import func
@@ -296,7 +385,8 @@ def create_app(facade) -> FastAPI:
         action_type: str = Query("ALL"),
         status: str = Query("ALL"),
         search: Optional[str] = None,
-        limit: int = Query(100)
+        limit: int = Query(100),
+        admin: dict = Depends(require_permissions(["view_system_logs"]))
     ):
         logs = facade._backend.action_log_service.get_all_actions(
             limit=limit,
@@ -305,14 +395,17 @@ def create_app(facade) -> FastAPI:
             search=search
         )
         
-        # Map session IDs to user names from MySQL
+        # Map session IDs to user names and TG IDs from MySQL
         db = SessionLocal()
         session_name_map = {}
+        session_tg_id_map = {}
         try:
             all_sessions = db.query(SessionModel).all()
             for s in all_sessions:
                 if s.session_id:
                     session_name_map[s.session_id] = s.user_name or (f"مشترك ({s.session_id})" if not s.customer_id else f"{s.user_name or s.session_id} - {s.customer_id}")
+                    if s.user_id:
+                        session_tg_id_map[s.session_id] = s.user_id
         except Exception:
             pass
         finally:
@@ -334,11 +427,13 @@ def create_app(facade) -> FastAPI:
                 except Exception:
                     pass
     
-            # Resolve clean customer name
+            # Resolve clean customer name and TG ID
+            tg_id = None
             if l.session_id and l.session_id.startswith("BROADCAST"):
                 cust_name = "بث إشعارات جماعي"
             elif l.session_id in session_name_map:
                 cust_name = session_name_map[l.session_id]
+                tg_id = session_tg_id_map.get(l.session_id)
             elif l.customer_id:
                 cust_name = f"مشترك ({l.customer_id})"
             elif l.session_id:
@@ -351,17 +446,18 @@ def create_app(facade) -> FastAPI:
                 "timestamp": l.created_at.strftime("%Y-%m-%d %H:%M:%S") if l.created_at else "N/A",
                 "sessionId": l.session_id,
                 "customerId": cust_name,
+                "tgId": tg_id,
                 "type": l.action_type,
                 "tool": l.tool_name or "N/A",
                 "intent": l.intent or "N/A",
                 "status": l.status,
-                "params": params,
-                "result": res_summary
+                "details": params,
+                "summary": res_summary
             })
         return result
     
     @app.get("/api/sessions")
-    def get_sessions(limit: int = Query(20)):
+    def get_sessions(limit: int = Query(20), admin: dict = Depends(require_permissions(["view_chat_sessions"]))):
         sessions = facade._backend.session_service.get_all_sessions(limit=limit)
         result = []
         for s in sessions:
@@ -372,6 +468,7 @@ def create_app(facade) -> FastAPI:
                 "id": s.session_id,
                 "customer": cust_name,
                 "user_name": cust_name,
+                "is_playground": s.user_id.startswith('playground_admin_') if s.user_id else False,
                 "intent": "check_balance" if s.authed else "general_inquiry",
                 "time": s.created_at.strftime("%I:%M %p") if s.created_at else "الآن",
                 "authenticated": s.authed,
@@ -380,7 +477,7 @@ def create_app(facade) -> FastAPI:
         return result
     
     @app.get("/api/sessions/{session_id}/messages")
-    def get_session_messages(session_id: str):
+    def get_session_messages(session_id: str, admin: dict = Depends(require_permissions(["view_chat_sessions"]))):
         history = facade._backend.message_service.load_history(session_id=session_id, limit=50)
         return [
             {
@@ -396,7 +493,7 @@ def create_app(facade) -> FastAPI:
         admin_name: Optional[str] = "فريق الدعم الفني"
     
     @app.post("/api/sessions/{session_id}/reply")
-    def send_manual_reply(session_id: str, body: ManualReplyRequest):
+    def reply_to_session(session_id: str, body: ManualReplyRequest, admin: dict = Depends(require_permissions(["reply_chat_sessions"]))):
         text = body.message.strip()
         if not text:
             raise HTTPException(status_code=400, detail="لا يمكن إرسال رسالة فارغة")
@@ -436,7 +533,7 @@ def create_app(facade) -> FastAPI:
         }
     
     @app.delete("/api/sessions/{session_id}")
-    def delete_session(session_id: str):
+    def delete_session(session_id: str, admin: dict = Depends(require_permissions(["delete_chat_sessions"]))):
         db = SessionLocal()
         try:
             session = db.query(SessionModel).filter(SessionModel.session_id == session_id).first()
@@ -450,9 +547,16 @@ def create_app(facade) -> FastAPI:
             raise HTTPException(status_code=500, detail=str(e))
         finally:
             db.close()
+    @app.post("/api/sessions/{session_id}/reset")
+    def reset_playground_session(session_id: str, admin: dict = Depends(require_any_permission(["delete_chat_sessions", "use_playground"]))):
+        try:
+            facade._backend.session_service.close_session(session_id)
+            return {"status": "success", "message": f"Session {session_id} reset successfully"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
     
     @app.get("/api/crm/customers")
-    def get_crm_customers():
+    def get_crm_customers(admin: dict = Depends(require_permissions(["view_chat_sessions"]))):
         db = SessionLocal()
         try:
             sessions = db.query(SessionModel).filter(SessionModel.is_active == True).order_by(SessionModel.created_at.desc()).all()
@@ -470,6 +574,7 @@ def create_app(facade) -> FastAPI:
                     "auth_state": s.auth_state,
                     "authenticated": s.authed,
                     "is_active": s.is_active,
+                    "is_playground": str(s.user_id).startswith('playground_admin_') if s.user_id else False,
                     "lastActive": last_msg_time,
                     "created_at": s.created_at.strftime("%Y-%m-%d %H:%M") if s.created_at else "غير معروف",
                     "tickets": [],
@@ -478,19 +583,145 @@ def create_app(facade) -> FastAPI:
             return result
         finally:
             db.close()
-    
+            
+    @app.get("/api/crm/overview/{customer_id}")
+    def get_crm_overview(customer_id: str, admin: dict = Depends(require_permissions(["view_chat_sessions"]))):
+        try:
+            overview = facade._backend.crm_client.get_user_overview(customer_id)
+            if not overview or not overview.get("success"):
+                raise HTTPException(status_code=404, detail="Customer overview not found")
+            return overview.get("data", {})
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+            
+    @app.get("/api/notifications/subscribers")
+    def get_notifications_subscribers(admin: dict = Depends(require_permissions(["view_chat_sessions"]))):
+        db = SessionLocal()
+        try:
+            sessions = db.query(SessionModel).order_by(SessionModel.created_at.desc()).all()
+            unique_users = {}
+            for s in sessions:
+                if not s.user_id:
+                    continue
+                if s.user_id not in unique_users:
+                    history = db.query(MessageModel).filter(MessageModel.session_id == s.session_id).order_by(MessageModel.created_at.desc()).limit(1).first()
+                    last_msg_time = history.created_at.strftime("%Y-%m-%d %H:%M") if history and history.created_at else "لا يوجد"
+                    last_msg_content = history.content if history else "لا يوجد"
+                    
+                    unique_users[s.user_id] = {
+                        "id": s.session_id,
+                        "session_id": s.session_id,
+                        "user_id": s.user_id,
+                        "user_name": s.user_name or "غير متوفر",
+                        "customer_id": s.customer_id or "غير محدد",
+                        "auth_state": s.auth_state,
+                        "authenticated": s.authed,
+                        "is_active": s.is_active,
+                        "last_active": last_msg_time,
+                        "last_message": last_msg_content,
+                        "created_at": s.created_at.strftime("%Y-%m-%d %H:%M") if s.created_at else "غير معروف"
+                    }
+            return list(unique_users.values())
+        finally:
+            db.close()
+            
+    @app.get("/api/notifications/history")
+    def get_notifications_history(admin: dict = Depends(require_permissions(["view_chat_sessions"]))):
+        return []
+
+    @app.post("/api/notifications/broadcast")
+    def send_broadcast(body: BroadcastRequest, admin: dict = Depends(require_permissions(["reply_chat_sessions"]))):
+        token = os.getenv("TELEGRAM_BOT_TOKEN") or facade._config.telegram.bot_token
+        if not token:
+            raise HTTPException(status_code=500, detail="Telegram bot token not configured")
+            
+        db = SessionLocal()
+        try:
+            target_telegram_ids = set()
+            
+            if body.target == 'CUSTOM' and body.user_ids:
+                sessions = db.query(SessionModel).filter(SessionModel.session_id.in_(body.user_ids)).all()
+                for s in sessions:
+                    if s.user_id and not s.user_id.startswith('playground'):
+                        target_telegram_ids.add(s.user_id)
+            else:
+                sessions = db.query(SessionModel).order_by(SessionModel.created_at.desc()).all()
+                unique_users = {}
+                for s in sessions:
+                    if s.user_id and not s.user_id.startswith('playground'):
+                        if s.user_id not in unique_users:
+                            unique_users[s.user_id] = s
+                            
+                for s in unique_users.values():
+                    if body.target == 'ALL':
+                        target_telegram_ids.add(s.user_id)
+                    elif body.target == 'AUTHED' and s.authed:
+                        target_telegram_ids.add(s.user_id)
+                    elif body.target == 'UNAUTHED' and not s.authed:
+                        target_telegram_ids.add(s.user_id)
+
+            success_count = 0
+            error_count = 0
+            
+            text = f"📢 {body.title}\n\n{body.message}"
+            if body.sent_by:
+                text += f"\n\n-- {body.sent_by}"
+                
+            import httpx
+            with httpx.Client(timeout=10.0) as client:
+                for tg_id in target_telegram_ids:
+                    try:
+                        telegram_payload = {
+                            "chat_id": tg_id,
+                            "text": text
+                        }
+                        resp = client.post(f"https://api.telegram.org/bot{token}/sendMessage", json=telegram_payload)
+                        if resp.status_code == 200 and resp.json().get("ok"):
+                            success_count += 1
+                        else:
+                            error_count += 1
+                    except Exception:
+                        error_count += 1
+                        
+            return {
+                "status": "success",
+                "message": f"Broadcast complete. Sent: {success_count}, Failed: {error_count}",
+                "success_count": success_count,
+                "error_count": error_count
+            }
+        finally:
+            db.close()
+
+    @app.get("/api/permissions")
+    def get_permissions(admin: dict = Depends(get_current_admin)):
+        try:
+            return facade._backend.permission_service.get_all_permissions()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.put("/api/permissions/{tool_name}")
+    def update_permission(tool_name: str, req: PermissionUpdateRequest, admin: dict = Depends(get_current_admin)):
+        try:
+            updated_by = req.updated_by or admin.get("username", "admin")
+            success = facade._backend.permission_service.set_permission(tool_name, req.is_enabled, updated_by)
+            if not success:
+                raise HTTPException(status_code=400, detail="Failed to update permission in DB")
+            return {"status": "success", "message": f"Permission {tool_name} updated"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
     @app.get("/api/rag/stats")
-    def get_rag_stats():
+    def get_rag_stats(admin: dict = Depends(require_permissions(["view_knowledge_base"]))):
         return facade._rag_service.get_stats()
     
     @app.post("/api/rag/reindex")
-    def reindex_rag():
+    def reindex_rag(admin: dict = Depends(require_permissions(["edit_knowledge_base"]))):
         try:
             res = facade._rag_service.reindex()
             return res
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
-    
+
     @app.post("/api/rag/search")
     def search_rag(req: RAGSearchRequest):
         try:
@@ -538,13 +769,7 @@ def create_app(facade) -> FastAPI:
             "response": text,
             "status": "SUCCESS"
         }
-    
-    
-    
-    # ═══════════════════════════════════════════════════════════════════════════
-    # PERMISSIONS API — Agent Capability Control
-    # ═══════════════════════════════════════════════════════════════════════════
-    
+
     @app.get("/api/permissions")
     def get_permissions():
         """
@@ -628,223 +853,6 @@ def create_app(facade) -> FastAPI:
             "inserted": inserted,
             "message": f"Seeded {inserted} default permissions into the database.",
         }
-    
-    
-    # ═══════════════════════════════════════════════════════════════════════════
-    # NOTIFICATIONS & BROADCAST API — Telegram Admin Broadcast (FR-28)
-    # ═══════════════════════════════════════════════════════════════════════════
-    
-    import requests
-    
-    @app.get("/api/notifications/subscribers")
-    def get_subscribers():
-        """
-        Get all registered bot subscribers from SQLite database with status.
-        """
-        db = SessionLocal()
-        try:
-            sessions = db.query(SessionModel).order_by(SessionModel.updated_at.desc(), SessionModel.created_at.desc()).all()
-            result = []
-            for s in sessions:
-                history = db.query(MessageModel).filter(MessageModel.session_id == s.session_id).order_by(MessageModel.created_at.desc()).first()
-                last_msg_time = history.created_at.strftime("%Y-%m-%d %H:%M") if history and history.created_at else "لا يوجد"
-                last_msg = history.content if history else ""
-                
-                result.append({
-                    "id": s.session_id,
-                    "session_id": s.session_id,
-                    "user_id": s.user_id,
-                    "customer_id": s.customer_id or "غير محدد",
-                    "authenticated": bool(s.authed),
-                    "auth_state": s.auth_state or ("AUTHENTICATED" if s.authed else "UNAUTHENTICATED"),
-                    "is_active": bool(s.is_active),
-                    "last_active": last_msg_time,
-                    "last_message": last_msg,
-                    "created_at": s.created_at.strftime("%Y-%m-%d %H:%M") if s.created_at else "غير معروف"
-                })
-            return result
-        finally:
-            db.close()
-    
-    
-    @app.get("/api/notifications/history")
-    def get_broadcast_history(limit: int = 50):
-        """
-        Get history of all broadcast campaigns sent through the dashboard.
-        """
-        db = SessionLocal()
-        try:
-            logs = db.query(AgentActionLog).filter(
-                AgentActionLog.action_type == "BROADCAST_NOTIFICATION"
-            ).order_by(AgentActionLog.created_at.desc()).limit(limit).all()
-            
-            history = []
-            for l in logs:
-                params = l.parameters
-                if isinstance(params, str):
-                    try:
-                        params = json.loads(params)
-                    except Exception:
-                        params = {}
-                if not isinstance(params, dict):
-                    params = {}
-                    
-                res = l.result_summary
-                if isinstance(res, str):
-                    try:
-                        res = json.loads(res)
-                    except Exception:
-                        res = {"summary": res}
-                if not isinstance(res, dict):
-                    res = {}
-    
-                history.append({
-                    "id": l.id,
-                    "timestamp": l.created_at.strftime("%Y-%m-%d %H:%M") if l.created_at else "الآن",
-                    "title": params.get("title", "إشعار إداري"),
-                    "message": params.get("message", ""),
-                    "target": params.get("target", "ALL"),
-                    "target_count": params.get("target_count", res.get("total", 0)),
-                    "sent_count": res.get("sent", 0),
-                    "failed_count": res.get("failed", 0),
-                    "sent_by": params.get("sent_by", "Admin"),
-                    "status": l.status
-                })
-            return history
-        finally:
-            db.close()
-    
-    
-    @app.post("/api/notifications/broadcast")
-    def send_broadcast(req: BroadcastRequest):
-        """
-        Send a broadcast notification to bot users via Telegram API and log the event.
-        """
-        if not req.message or not req.message.strip():
-            raise HTTPException(status_code=400, detail="نص الإشعار مطلوب ولا يمكن أن يكون فارغاً")
-    
-        db = SessionLocal()
-        token = os.getenv("TELEGRAM_BOT_TOKEN") or facade._config.telegram.bot_token
-        
-        try:
-            # Determine recipient sessions
-            query = db.query(SessionModel)
-            if req.target == "AUTHED":
-                query = query.filter(SessionModel.authed == True)
-            elif req.target == "UNAUTHED":
-                query = query.filter(SessionModel.authed == False)
-            elif req.target == "CUSTOM" and req.user_ids:
-                query = query.filter(SessionModel.session_id.in_(req.user_ids))
-            
-            target_sessions = query.all()
-            
-            sent_count = 0
-            failed_count = 0
-            delivery_details = []
-            
-            formatted_message = f"*{req.title}*\n\n{req.message.strip()}"
-            
-            seen_chat_ids = set()
-            
-            for sess in target_sessions:
-                chat_id = sess.user_id
-                # Clean up prefix if any, e.g. "tg_12345" -> "12345"
-                raw_chat_id = chat_id.replace("tg_", "") if chat_id.startswith("tg_") else chat_id
-                
-                if not raw_chat_id or raw_chat_id in seen_chat_ids:
-                    continue
-                seen_chat_ids.add(raw_chat_id)
-                
-                delivered = False
-                error_reason = None
-                
-                # If valid numeric chat_id and token present, send via Telegram Bot API
-                if token and raw_chat_id.isdigit():
-                    try:
-                        resp = requests.post(
-                            f"https://api.telegram.org/bot{token}/sendMessage",
-                            json={
-                                "chat_id": int(raw_chat_id),
-                                "text": formatted_message,
-                                "parse_mode": "Markdown"
-                            },
-                            timeout=5
-                        )
-                        if resp.status_code == 200:
-                            delivered = True
-                            sent_count += 1
-                        else:
-                            error_data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
-                            error_reason = error_data.get("description", f"HTTP {resp.status_code}")
-                            failed_count += 1
-                    except Exception as ex:
-                        error_reason = str(ex)
-                        failed_count += 1
-                else:
-                    # If mock/simulated session (non-numeric or no token)
-                    delivered = True
-                    sent_count += 1
-                    error_reason = "Simulated delivery (Mock User)"
-    
-                delivery_details.append({
-                    "session_id": chat_id,
-                    "customer_id": sess.customer_id,
-                    "delivered": delivered,
-                    "reason": error_reason
-                })
-    
-            # Save action log in DB
-            action_status = "SUCCESS" if (sent_count > 0 or len(target_sessions) == 0) else "FAILED"
-            if failed_count > 0 and sent_count > 0:
-                action_status = "PARTIAL"
-    
-            log_entry = AgentActionLog(
-                session_id=f"BROADCAST_{req.target}",
-                customer_id="SYSTEM",
-                intent="broadcast_notification",
-                action_type="BROADCAST_NOTIFICATION",
-                tool_name="telegram_broadcast",
-                parameters={
-                    "target": req.target,
-                    "title": req.title,
-                    "message": req.message,
-                    "target_count": len(target_sessions),
-                    "sent_by": req.sent_by,
-                    "custom_recipients": req.user_ids if req.target == "CUSTOM" else None
-                },
-                status=action_status,
-                result_summary=json.dumps({
-                    "total": len(target_sessions),
-                    "sent": sent_count,
-                    "failed": failed_count,
-                    "title": req.title,
-                    "preview": req.message[:80]
-                }, ensure_ascii=False)
-            )
-            db.add(log_entry)
-            db.commit()
-    
-            return {
-                "success": True,
-                "target": req.target,
-                "total_recipients": len(target_sessions),
-                "sent_count": sent_count,
-                "failed_count": failed_count,
-                "status": action_status,
-                "timestamp": datetime.datetime.utcnow().isoformat(),
-                "details": delivery_details[:50]
-            }
-        except Exception as e:
-            db.rollback()
-            raise HTTPException(status_code=500, detail=f"فشل إرسال الإشعار: {str(e)}")
-        finally:
-            db.close()
-    
-    
-    # =========================================================================
-    # Knowledge Base & RAG Management Endpoints (Zero Restart Hot-Reloading)
-    # =========================================================================
-    
     class QARequest(BaseModel):
         category: str
         question: str
@@ -902,27 +910,35 @@ def create_app(facade) -> FastAPI:
         if not success:
             raise HTTPException(status_code=500, detail="فشل حذف السؤال")
         return {"status": "success", "message": "تم حذف السؤال وتحديث الفهرس بنجاح"}
-    
     @app.get("/api/rag/company-info")
-    def get_company_info():
+    def get_company_info(admin: dict = Depends(require_permissions(["view_knowledge_base"]))):
         """Get structured company packages, topups, services, and contacts."""
         return facade._rag_service.get_company_info_data()
     
     @app.put("/api/rag/company-info")
-    def update_company_info(data: Dict[str, Any]):
+    def update_company_info(data: Dict[str, Any], admin: dict = Depends(require_permissions(["edit_knowledge_base"]))):
         """Update company_info.json and hot-reload in memory."""
+        # Validate that no fields are left empty
+        for key, value in data.items():
+            if isinstance(value, list):
+                for item in value:
+                    if isinstance(item, dict):
+                        for sub_k, sub_v in item.items():
+                            if sub_v is None or str(sub_v).strip() == "":
+                                raise HTTPException(status_code=400, detail="لا يمكن ترك حقول فارغة، يرجى تعبئة جميع الحقول أو حذف السطر الفارغ.")
+
         success = facade._rag_service.save_company_info_data(data)
         if not success:
             raise HTTPException(status_code=500, detail="فشل حفظ بيانات الشركة والباقات")
         return {"status": "success", "message": "تم حفظ الباقات وبيانات الشركة وتحديث البوت فوراً"}
     
     @app.get("/api/rag/pdfs")
-    def get_pdf_guides():
+    def get_pdf_guides(admin: dict = Depends(require_permissions(["view_knowledge_base"]))):
         """List all router PDF guides with page counts and file sizes."""
         return facade._rag_service.get_pdf_list()
     
     @app.post("/api/rag/pdfs/upload")
-    async def upload_pdf_guide(file: UploadFile = File(...)):
+    async def upload_pdf_guide(file: UploadFile = File(...), admin: dict = Depends(require_permissions(["edit_knowledge_base"]))):
         """Upload a new PDF router setup guide, parse text, and hot-reload."""
         if not file.filename.lower().endswith(".pdf"):
             raise HTTPException(status_code=400, detail="يجب رفع ملف بصيغة PDF فقط")
@@ -940,7 +956,7 @@ def create_app(facade) -> FastAPI:
         return {"status": "success", "message": f"تم رفع ملف {file.filename} وفهرسته بنجاح"}
     
     @app.delete("/api/rag/pdfs/{filename}")
-    def delete_pdf_guide(filename: str):
+    def delete_pdf_guide(filename: str, admin: dict = Depends(require_permissions(["edit_knowledge_base"]))):
         """Delete a PDF router guide and hot-reload."""
         success = facade._rag_service.delete_pdf_file(filename)
         if not success:
@@ -948,7 +964,7 @@ def create_app(facade) -> FastAPI:
         return {"status": "success", "message": f"تم حذف الكتيب {filename} وتحديث الفهرس"}
     
     @app.get("/api/rag/pdfs/download/{filename}")
-    def download_pdf_guide(filename: str):
+    def download_pdf_guide(filename: str, admin: dict = Depends(require_permissions(["view_knowledge_base"]))):
         """Download/view a PDF guide."""
         pdfs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "resources", "pdfs")
         target_path = os.path.join(pdfs_dir, os.path.basename(filename))
@@ -957,5 +973,82 @@ def create_app(facade) -> FastAPI:
         return FileResponse(target_path, media_type="application/pdf", filename=filename)
     
     
+    # ==========================================
+    # ADMIN & RBAC MANAGEMENT ENDPOINTS
+    # ==========================================
+    
+    from backend_service.core.services.admin_management_service import AdminManagementService
+    admin_mgt_service = AdminManagementService()
+
+    @app.get("/api/admin/permissions")
+    def get_all_permissions(admin: dict = Depends(require_permissions(["manage_admins"]))):
+        return admin_mgt_service.get_available_permissions()
+
+    @app.get("/api/admin/roles")
+    def get_roles(admin: dict = Depends(require_permissions(["manage_admins"]))):
+        roles = admin_mgt_service.get_roles()
+        return [{"id": r.id, "name": r.name, "description": r.description, "permissions": r.permissions} for r in roles]
+
+    class CreateRoleRequest(BaseModel):
+        name: str
+        description: str
+        permissions: List[str]
+        
+    @app.post("/api/admin/roles")
+    def create_role(req: CreateRoleRequest, admin: dict = Depends(require_permissions(["manage_admins"]))):
+        success, msg, role = admin_mgt_service.create_role(req.name, req.description, req.permissions)
+        if not success:
+            raise HTTPException(status_code=400, detail=msg)
+        return {"status": "success", "message": msg, "role": {"id": role.id, "name": role.name}}
+        
+    @app.put("/api/admin/roles/{role_id}")
+    def update_role(role_id: int, req: CreateRoleRequest, admin: dict = Depends(require_permissions(["manage_admins"]))):
+        success, msg = admin_mgt_service.update_role(role_id, req.name, req.description, req.permissions)
+        if not success:
+            raise HTTPException(status_code=400, detail=msg)
+        return {"status": "success", "message": msg}
+
+    @app.delete("/api/admin/roles/{role_id}")
+    def delete_role(role_id: int, admin: dict = Depends(require_permissions(["manage_admins"]))):
+        success, msg = admin_mgt_service.delete_role(role_id)
+        if not success:
+            raise HTTPException(status_code=400, detail=msg)
+        return {"status": "success", "message": msg}
+
+    @app.get("/api/admin/users")
+    def get_admin_users(admin: dict = Depends(require_permissions(["manage_admins"]))):
+        return admin_mgt_service.get_admins()
+
+    class AdminUserRequest(BaseModel):
+        username: str
+        password: Optional[str] = None
+        full_name: str
+        email: Optional[str] = None
+        role_id: Optional[int] = None
+        custom_permissions: List[str] = []
+        is_active: bool = True
+
+    @app.post("/api/admin/users")
+    def create_admin_user(req: AdminUserRequest, admin: dict = Depends(require_permissions(["manage_admins"]))):
+        if not req.password:
+            raise HTTPException(status_code=400, detail="يجب إدخال كلمة المرور")
+        success, msg = admin_mgt_service.create_admin(req.dict())
+        if not success:
+            raise HTTPException(status_code=400, detail=msg)
+        return {"status": "success", "message": msg}
+
+    @app.put("/api/admin/users/{admin_id}")
+    def update_admin_user(admin_id: int, req: AdminUserRequest, admin: dict = Depends(require_permissions(["manage_admins"]))):
+        success, msg = admin_mgt_service.update_admin(admin_id, req.dict())
+        if not success:
+            raise HTTPException(status_code=400, detail=msg)
+        return {"status": "success", "message": msg}
+
+    @app.delete("/api/admin/users/{admin_id}")
+    def delete_admin_user(admin_id: int, admin: dict = Depends(require_permissions(["manage_admins"]))):
+        success, msg = admin_mgt_service.delete_admin(admin_id)
+        if not success:
+            raise HTTPException(status_code=400, detail=msg)
+        return {"status": "success", "message": msg}
     
     return app

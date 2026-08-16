@@ -58,7 +58,7 @@ export default function BroadcastTab() {
   const [selectedUserIds, setSelectedUserIds] = useState([]);
   const [title, setTitle] = useState('إشعار هام من هايبرنت');
   const [message, setMessage] = useState('');
-  
+
   // UI Controls
   const [showUserModal, setShowUserModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -119,10 +119,18 @@ export default function BroadcastTab() {
 
   // Filtered Subscribers for Modal
   const modalFilteredUsers = subscribers.filter(user => {
-    const matchesSearch = 
-      (user.session_id && user.session_id.toLowerCase().includes(userSearch.toLowerCase())) ||
-      (user.customer_id && user.customer_id.toLowerCase().includes(userSearch.toLowerCase()));
-    
+    const searchStr = userSearch.toLowerCase();
+    const uname = (user.user_name || '').toLowerCase();
+    const sid = (user.session_id || '').toLowerCase();
+    const cid = (user.customer_id || '').toLowerCase();
+    const uid = (user.user_id ? String(user.user_id) : '').toLowerCase();
+
+    const matchesSearch =
+      sid.includes(searchStr) ||
+      cid.includes(searchStr) ||
+      uname.includes(searchStr) ||
+      uid.includes(searchStr);
+
     if (!matchesSearch) return false;
     if (userFilter === 'AUTHED') return user.authenticated;
     if (userFilter === 'UNAUTHED') return !user.authenticated;
@@ -154,50 +162,48 @@ export default function BroadcastTab() {
   };
 
   // Handle Send Broadcast
-  const handleSendBroadcast = () => {
+  const handleSendBroadcast = async () => {
     setShowConfirmModal(false);
-    requireAuth('إرسال إشعار للمشتركين', async () => {
-      setLoading(true);
-      setBroadcastResult(null);
+    setLoading(true);
+    setBroadcastResult(null);
 
-      try {
-        const payload = {
-          target: targetType,
-          user_ids: targetType === 'CUSTOM' ? selectedUserIds : undefined,
-          title: title.trim() || 'إشعار من هايبرنت',
-          message: message.trim(),
-          sent_by: 'مدير النظام (Dashboard Admin)'
-        };
+    try {
+      const payload = {
+        target: targetType,
+        user_ids: targetType === 'CUSTOM' ? selectedUserIds : undefined,
+        title: title.trim() || 'إشعار من هايبرنت',
+        message: message.trim(),
+        sent_by: 'مدير النظام (Dashboard Admin)'
+      };
 
-        const res = await fetch(`${API_BASE}/api/notifications/broadcast`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+      const res = await fetch(`${API_BASE}/api/notifications/broadcast`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setBroadcastResult({
+          type: 'success',
+          message: `تم إرسال الإشعار بنجاح إلى ${data.sent_count} من أصل ${data.total_recipients} مشترك.`
         });
-
-        const data = await res.json();
-        if (res.ok) {
-          setBroadcastResult({
-            type: 'success',
-            message: `تم إرسال الإشعار بنجاح إلى ${data.sent_count} من أصل ${data.total_recipients} مشترك.`
-          });
-          setMessage('');
-          fetchHistory();
-        } else {
-          setBroadcastResult({
-            type: 'error',
-            message: data.detail || 'حدث خطأ أثناء إرسال الإشعار'
-          });
-        }
-      } catch (err) {
+        setMessage('');
+        fetchHistory();
+      } else {
         setBroadcastResult({
           type: 'error',
-          message: 'تعذر الاتصال بالخادم، يرجى التأكد من تشغيل الـ Backend'
+          message: data.detail || 'حدث خطأ أثناء إرسال الإشعار'
         });
-      } finally {
-        setLoading(false);
       }
-    });
+    } catch (err) {
+      setBroadcastResult({
+        type: 'error',
+        message: 'تعذر الاتصال بالخادم، يرجى التأكد من تشغيل الـ Backend'
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -215,9 +221,9 @@ export default function BroadcastTab() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button 
-            onClick={() => { fetchSubscribers(); fetchHistory(); }} 
-            disabled={subscribersLoading || historyLoading} 
+          <button
+            onClick={() => { fetchSubscribers(); fetchHistory(); }}
+            disabled={subscribersLoading || historyLoading}
             className="hcn-btn-secondary"
             style={{ display: 'flex', alignItems: 'center', gap: 8 }}
           >
@@ -291,8 +297,8 @@ export default function BroadcastTab() {
               {broadcastResult.message}
             </span>
           </div>
-          <button 
-            onClick={() => setBroadcastResult(null)} 
+          <button
+            onClick={() => setBroadcastResult(null)}
             style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}
           >
             <X size={18} />
@@ -305,7 +311,7 @@ export default function BroadcastTab() {
 
         {/* ── Column 1: Notification Composer ── */}
         <div className="hcn-card" style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: 24 }}>
-          
+
           <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: 16 }}>
             <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
               <Send size={20} color="var(--primary)" />
@@ -322,9 +328,9 @@ export default function BroadcastTab() {
               1. الفئة المستهدفة (الجمهور)
             </label>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
-              
+
               {/* Option: ALL */}
-              <div 
+              <div
                 onClick={() => setTargetType('ALL')}
                 style={{
                   padding: '16px',
@@ -349,7 +355,7 @@ export default function BroadcastTab() {
               </div>
 
               {/* Option: AUTHED */}
-              <div 
+              <div
                 onClick={() => setTargetType('AUTHED')}
                 style={{
                   padding: '16px',
@@ -374,7 +380,7 @@ export default function BroadcastTab() {
               </div>
 
               {/* Option: UNAUTHED */}
-              <div 
+              <div
                 onClick={() => setTargetType('UNAUTHED')}
                 style={{
                   padding: '16px',
@@ -399,7 +405,7 @@ export default function BroadcastTab() {
               </div>
 
               {/* Option: CUSTOM */}
-              <div 
+              <div
                 onClick={() => { setTargetType('CUSTOM'); setShowUserModal(true); }}
                 style={{
                   padding: '16px',
@@ -432,9 +438,9 @@ export default function BroadcastTab() {
                 <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>
                   المشتركين المحددين يدوياً: <strong>{selectedUserIds.length}</strong>
                 </span>
-                <button 
-                  onClick={() => setShowUserModal(true)} 
-                  className="hcn-btn-secondary" 
+                <button
+                  onClick={() => setShowUserModal(true)}
+                  className="hcn-btn-secondary"
                   style={{ padding: '6px 12px', fontSize: 12 }}
                 >
                   تعديل القائمة المحددة
@@ -546,9 +552,9 @@ export default function BroadcastTab() {
 
         {/* ── Column 2: Live Telegram Message Preview ── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          
+
           <div className="hcn-card" style={{ padding: '24px', flex: 1, display: 'flex', flexDirection: 'column' }}>
-            
+
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <MessageSquare size={18} color="var(--primary)" />
@@ -570,7 +576,7 @@ export default function BroadcastTab() {
               boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
               border: '1px solid #242f3d'
             }}>
-              
+
               {/* Bot Header Bar */}
               <div style={{
                 display: 'flex',
@@ -601,7 +607,7 @@ export default function BroadcastTab() {
 
               {/* Chat Body & Bubble */}
               <div style={{ padding: '24px 8px', display: 'flex', flexDirection: 'column', gap: 12, flex: 1, justifyContent: 'center' }}>
-                
+
                 {/* Date separator */}
                 <div style={{ alignSelf: 'center', background: 'rgba(0,0,0,0.3)', padding: '4px 12px', borderRadius: 12, fontSize: 11, color: '#7f8c9b' }}>
                   اليوم
@@ -617,7 +623,7 @@ export default function BroadcastTab() {
                   boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
                   border: '1px solid #2b394a'
                 }}>
-                  
+
                   {/* Title */}
                   <div style={{
                     fontSize: 14,
@@ -673,14 +679,6 @@ export default function BroadcastTab() {
 
             </div>
 
-          </div>
-
-          {/* Quick Info Box */}
-          <div className="hcn-card" style={{ padding: '16px 20px', background: 'rgba(0, 167, 111, 0.05)', border: '1px solid rgba(0, 167, 111, 0.2)', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-            <Info size={20} color="var(--primary)" style={{ flexShrink: 0, marginTop: 2 }} />
-            <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              يتم إرسال الإشعارات عبر <strong>Telegram Bot API</strong> بشكل مشفر وفوري دون الحاجة إلى موافقة مسبقة، وتُحفظ السجلات في قاعدة البيانات للتدقيق الإداري.
-            </div>
           </div>
 
         </div>
@@ -783,8 +781,8 @@ export default function BroadcastTab() {
           backdropFilter: 'blur(4px)'
         }}>
           <div className="hcn-card" style={{
-            width: '90%',
-            maxWidth: 750,
+            width: '95%',
+            maxWidth: 950,
             maxHeight: '85vh',
             display: 'flex',
             flexDirection: 'column',
@@ -792,7 +790,7 @@ export default function BroadcastTab() {
             overflow: 'hidden',
             boxShadow: '0 20px 40px rgba(0,0,0,0.3)'
           }}>
-            
+
             {/* Modal Header */}
             <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
@@ -803,7 +801,7 @@ export default function BroadcastTab() {
                   تم تحديد <strong style={{ color: 'var(--primary)' }}>{selectedUserIds.length}</strong> من أصل {subscribers.length} مشترك
                 </div>
               </div>
-              <button 
+              <button
                 onClick={() => setShowUserModal(false)}
                 style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}
               >
@@ -818,7 +816,7 @@ export default function BroadcastTab() {
                 <input
                   type="text"
                   className="hcn-input"
-                  placeholder="بحث برقم الجلسة أو رقم العميل..."
+                  placeholder="بحث بمعرف المحادثة (Telegram ID) أو اسم المستخدم أو رقم العميل..."
                   value={userSearch}
                   onChange={e => setUserSearch(e.target.value)}
                   style={{ width: '100%', paddingRight: 38 }}
@@ -867,7 +865,9 @@ export default function BroadcastTab() {
                 <thead>
                   <tr>
                     <th style={{ width: 40, padding: '12px 8px' }}>اختيار</th>
-                    <th style={{ padding: '12px 16px' }}>معرف المحادثة (Telegram ID)</th>
+                    <th style={{ padding: '12px 16px' }}>معرف المحادثة</th>
+                    <th style={{ padding: '12px 16px' }}>Telegram ID</th>
+                    <th style={{ padding: '12px 16px' }}>اسم المستخدم</th>
                     <th style={{ padding: '12px 16px' }}>رقم المشترك</th>
                     <th style={{ padding: '12px 16px' }}>حالة التوثيق</th>
                     <th style={{ padding: '12px 16px' }}>آخر تفاعل</th>
@@ -877,8 +877,8 @@ export default function BroadcastTab() {
                   {modalFilteredUsers.map((user) => {
                     const isSelected = selectedUserIds.includes(user.session_id);
                     return (
-                      <tr 
-                        key={user.session_id} 
+                      <tr
+                        key={user.session_id}
                         onClick={() => toggleUserSelect(user.session_id)}
                         style={{ cursor: 'pointer', background: isSelected ? 'rgba(0, 167, 111, 0.05)' : undefined }}
                       >
@@ -893,7 +893,13 @@ export default function BroadcastTab() {
                           {user.session_id}
                         </td>
                         <td style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text-secondary)' }}>
-                          {user.customer_id}
+                          {user.user_id || 'غير متوفر'}
+                        </td>
+                        <td style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text-secondary)', direction: 'ltr', textAlign: 'right' }}>
+                          {user.user_name || 'غير متوفر'}
+                        </td>
+                        <td style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text-secondary)' }}>
+                          {user.customer_id || 'غير محدد'}
                         </td>
                         <td style={{ padding: '12px 16px' }}>
                           {user.authenticated ? (
@@ -917,8 +923,8 @@ export default function BroadcastTab() {
               <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                 تم اختيار <strong style={{ color: 'var(--primary)' }}>{selectedUserIds.length}</strong> مستخدم
               </span>
-              <button 
-                onClick={() => setShowUserModal(false)} 
+              <button
+                onClick={() => setShowUserModal(false)}
                 className="hcn-btn-primary"
                 style={{ padding: '8px 24px' }}
               >
@@ -989,15 +995,15 @@ export default function BroadcastTab() {
             </div>
 
             <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 8 }}>
-              <button 
-                onClick={() => setShowConfirmModal(false)} 
+              <button
+                onClick={() => setShowConfirmModal(false)}
                 className="hcn-btn-secondary"
                 style={{ padding: '10px 20px' }}
               >
                 إلغاء
               </button>
-              <button 
-                onClick={handleSendBroadcast} 
+              <button
+                onClick={handleSendBroadcast}
                 className="hcn-btn-primary"
                 style={{ padding: '10px 24px' }}
               >

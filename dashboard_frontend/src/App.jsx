@@ -10,6 +10,7 @@ import CrmLookupTab from './components/CrmLookupTab';
 import KnowledgeBaseTab from './components/KnowledgeBaseTab';
 import TestPlaygroundTab from './components/TestPlaygroundTab';
 import PermissionsTab from './components/PermissionsTab';
+import AdminsManagementTab from './components/AdminsManagementTab';
 import BroadcastTab from './components/BroadcastTab';
 
 function DashboardContent() {
@@ -56,8 +57,8 @@ function DashboardContent() {
     );
   }
 
-  if (!isAuthenticated) {
-    return <LoginView />;
+  if (!isAuthenticated && activeTab !== 'playground') {
+    return <LoginView onGoToPlayground={() => handleSetActiveTab('playground')} />;
   }
 
   const renderActiveTab = () => {
@@ -70,6 +71,7 @@ function DashboardContent() {
       case 'rag':           return <KnowledgeBaseTab />;
       case 'playground':    return <TestPlaygroundTab />;
       case 'permissions':   return <PermissionsTab />;
+      case 'admins':        return <AdminsManagementTab />;
       default:              return <OverviewTab setActiveTab={handleSetActiveTab} />;
     }
   };
