@@ -24,6 +24,8 @@ _config_data = load_config()
 try:
     from dotenv import load_dotenv
     load_dotenv()
+    env_path = BASE_DIR / ".env"
+    load_dotenv(dotenv_path=env_path, override=True)
 except ImportError:
     pass
 

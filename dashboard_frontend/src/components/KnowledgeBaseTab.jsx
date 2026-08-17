@@ -63,7 +63,7 @@ export default function KnowledgeBaseTab() {
   // 4. Semantic Search Tester State
 
   const { requireAuth, modalProps } = usePasswordAuth();
-  const { hasPermission } = useAuth();
+  const { hasPermission, token } = useAuth();
   const canEdit = hasPermission('edit_knowledge_base');
 
   const showToast = (type, text) => {
@@ -1375,7 +1375,7 @@ export default function KnowledgeBaseTab() {
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-color)', paddingTop: 10 }}>
                     <a
-                      href={`${API}/api/rag/pdfs/download/${encodeURIComponent(pdf.filename)}`}
+                      href={`${API}/api/rag/pdfs/download/${encodeURIComponent(pdf.filename)}?token=${token}`}
                       target="_blank"
                       rel="noreferrer"
                       className="hcn-btn-outlined"

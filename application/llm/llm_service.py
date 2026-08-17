@@ -119,8 +119,28 @@ class LLMService:
             question, intent, rag_context, data_str, history
         )
         options = {"image_bytes": image_bytes} if image_bytes else None
-        for chunk in self._engine.infer_stream(prompt, options):
-            yield chunk
+        
+        t0 = time.time()
+        full_response = ""
+        try:
+            for chunk in self._engine.infer_stream(prompt, options):
+                full_response += chunk
+                yield chunk
+        finally:
+            latency = (time.time() - t0) * 1000
+            try:
+                from backend_service.core.services.crm_log_service import CRMLogService
+                CRMLogService().log_request(
+                    endpoint="LLM / Combined (Stream)",
+                    method="LLM",
+                    customer_id=crm_data.get("customer_id") if crm_data else None,
+                    status_code=200,
+                    latency_ms=latency,
+                    query_params={"intent": intent, "question": question},
+                    response_data={"raw_answer": full_response}
+                )
+            except Exception as e:
+                self._logger.warning(f"Failed to log LLM stream: {e}")
 
     @log_operation()
     def generate_greeting(self, message: str) -> str:

@@ -204,6 +204,20 @@ class RAGService:
         context = self._context_builder.build_context(ranked)
 
         latency = (time.time() - start) * 1000
+        try:
+            from backend_service.core.services.crm_log_service import CRMLogService
+            CRMLogService().log_request(
+                endpoint="ChromaDB / RAG Search",
+                method="RAG",
+                customer_id=None,
+                status_code=200,
+                latency_ms=latency,
+                query_params={"query": q_text},
+                response_data={"context_length": len(context), "documents_found": len(ranked)}
+            )
+        except Exception as e:
+            self._logger.warning(f"Failed to log RAG search: {e}")
+
         return ServiceResult(
             source="RAG",
             success=True,

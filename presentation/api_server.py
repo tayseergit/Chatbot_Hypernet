@@ -972,8 +972,27 @@ def create_app(facade) -> FastAPI:
         return {"status": "success", "message": f"تم حذف الكتيب {filename} وتحديث الفهرس"}
     
     @app.get("/api/rag/pdfs/download/{filename}")
-    def download_pdf_guide(filename: str, admin: dict = Depends(require_permissions(["view_knowledge_base"]))):
+    def download_pdf_guide(filename: str, request: Request, token: str = None):
         """Download/view a PDF guide."""
+        from backend_service.core.security import decode_access_token
+        
+        # 1. Try to get token from Authorization header
+        auth_header = request.headers.get("Authorization")
+        admin = None
+        if auth_header and auth_header.startswith("Bearer "):
+            header_token = auth_header.split(" ")[1]
+            admin = decode_access_token(header_token)
+            
+        # 2. Try to get token from query param
+        if admin is None and token:
+            admin = decode_access_token(token)
+            
+        if admin is None:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+            
+        # 3. Check permissions
+        if "view_knowledge_base" not in admin.get("permissions", []):
+            raise HTTPException(status_code=403, detail="الصلاحيات غير كافية لإجراء هذه العملية")
         pdfs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "resources", "pdfs")
         target_path = os.path.join(pdfs_dir, os.path.basename(filename))
         if not os.path.exists(target_path):
