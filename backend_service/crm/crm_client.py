@@ -21,11 +21,11 @@ def _ignore_self_key(self, *args, **kwargs):
 
 @trace_all_methods
 class CRMClient:
-    """Base client for CRM API requests with automatic redaction and logging."""
-    def __init__(self):
+    def __init__(self, permission_service=None):
         self._auth_manager = CRMAuthManager()
         self._logger = logging.getLogger("crm_client")
         self._log_service = CRMLogService()
+        self._permission_service = permission_service
 
     def clear_all_caches(self):
         """Clear all CRM data caches."""
@@ -67,8 +67,10 @@ class CRMClient:
             status_code = response.status_code
             response.raise_for_status()
             data = response.json()
-            response_data = self._redact_response(data, allowed_fields) if allowed_fields else data
-            return {"success": True, "data": response_data}
+            response_data = data  # Log the FULL unredacted response
+            
+            final_data = self._redact_response(data, allowed_fields) if allowed_fields else data
+            return {"success": True, "data": final_data}
             
         except requests.RequestException as e:
             if hasattr(e, 'response') and e.response is not None:
@@ -93,35 +95,53 @@ class CRMClient:
         response_data = None
         try:
             response = requests.post(url, headers=self._get_headers(), json=payload, timeout=30)
+            status_code = response.status_code
             try:
                 data = response.json()
             except ValueError:
                 self._logger.error(f"CRM POST returned invalid JSON. Status: {response.status_code}")
+                response_data = {"error": "Invalid response format"}
                 return {"success": False, "error": "Invalid response format"}
                 
-            if allowed_fields:
-                data = self._redact_response(data, allowed_fields)
-            return {"success": True, "data": data}
+            response_data = data  # Log the FULL unredacted response
+            
+            final_data = self._redact_response(data, allowed_fields) if allowed_fields else data
+            return {"success": True, "data": final_data}
             
         except requests.RequestException as e:
+            if hasattr(e, 'response') and e.response is not None:
+                status_code = e.response.status_code
             self._logger.error(f"CRM POST request failed: {e}")
+            response_data = {"error": "CRM Connection Error"}
             return {"success": False, "error": "CRM Connection Error"}
+        finally:
+            latency = (time.time() - t0) * 1000
+            self._log_service.log_request(
+                endpoint=url, method="POST", payload=payload, 
+                response=response_data, status_code=status_code, latency_ms=latency
+            )
 
     @cached(cache=_phone_cache, key=_ignore_self_key)
     def search_user_by_phone(self, phone: str) -> Dict[str, Any]:
         """Search for a user by phone number using the CRM."""
+        if self._permission_service and not self._permission_service.is_allowed("crm_search_users"):
+            return {"success": False, "error": "Endpoint disabled"}
         url = f"{self._auth_manager._base_url}/users?search={phone}&limit=10"
         return self.get(url, allowed_fields=["id", "phone", "username", "data"])
 
     @cached(cache=_username_cache, key=_ignore_self_key)
     def search_users(self, search_term: str) -> Dict[str, Any]:
         """Search for users (e.g. by username) and return full data for extraction."""
+        if self._permission_service and not self._permission_service.is_allowed("crm_search_users"):
+            return {"success": False, "error": "Endpoint disabled"}
         url = f"{self._auth_manager._base_url}/users?search={search_term}&limit=10&order_by=username&order_direction=desc"
         return self.get(url)
 
     @cached(cache=_profile_cache, key=_ignore_self_key)
     def get_profile(self, profile_id: int) -> Dict[str, Any]:
         """Fetch profile details."""
+        if self._permission_service and not self._permission_service.is_allowed("crm_get_profile"):
+            return {"success": False, "error": "Endpoint disabled"}
         url = f"{self._auth_manager._base_url}/profiles/{profile_id}"
         response = self.get(url)
         if response.get("success") and "data" in response:
@@ -135,12 +155,16 @@ class CRMClient:
 
     def get_user_current_rate(self, customer_id: str) -> Dict[str, Any]:
         """Fetch current live rate from the router for the user."""
+        if self._permission_service and not self._permission_service.is_allowed("crm_get_rate"):
+            return {"success": False, "error": "Endpoint disabled"}
         url = f"{self._auth_manager._base_url}/router-os/user/{customer_id}/rate"
         return self.get(url)
 
     @cached(cache=_packages_cache, key=_ignore_self_key)
     def get_available_packages(self, customer_id: str) -> Dict[str, Any]:
         """Fetch available top-up packages for the user."""
+        if self._permission_service and not self._permission_service.is_allowed("crm_get_packages"):
+            return {"success": False, "error": "Endpoint disabled"}
         url = f"{self._auth_manager._base_url}/packages?user_id={customer_id}"
         return self.get(url)
 
@@ -183,6 +207,8 @@ class CRMClient:
 
     def get_user_overview(self, customer_id: str) -> Dict[str, Any]:
         """Fetch user overview and redact internal/PII fields for LLM."""
+        if self._permission_service and not self._permission_service.is_allowed("crm_get_overview"):
+            return {"success": False, "error": "Endpoint disabled"}
         url = f"{self._auth_manager._base_url}/users/overview/{customer_id}"
         
         response = self.get(url)
@@ -224,6 +250,8 @@ class CRMClient:
 
     def get_extend_status(self, username: str) -> Dict[str, Any]:
         """Fetch the current bill extension status for a user."""
+        if self._permission_service and not self._permission_service.is_allowed("crm_extend_user_bill"):
+            return {"success": False, "error": "Endpoint disabled"}
         url = f"{self._auth_manager._base_url}/user-extends/extendBill"
         # The API requires a GET request with a JSON body containing the username
         t0 = time.time()
@@ -251,6 +279,8 @@ class CRMClient:
 
     def extend_user_bill(self, username: str) -> Dict[str, Any]:
         """Perform the actual bill extension (POST)."""
+        if self._permission_service and not self._permission_service.is_allowed("crm_extend_user_bill"):
+            return {"success": False, "error": "Endpoint disabled"}
         url = f"{self._auth_manager._base_url}/user/extends"
         payload = {"username": username}
         return self.post(url, payload)
@@ -258,16 +288,22 @@ class CRMClient:
     @cached(cache=_iptv_cache, key=_ignore_self_key)
     def get_iptv_expiration(self, customer_id: str) -> Dict[str, Any]:
         """Fetch the IPTV expiration date for a user."""
+        if self._permission_service and not self._permission_service.is_allowed("crm_get_iptv_expiration"):
+            return {"success": False, "error": "Endpoint disabled"}
         url = f"{self._auth_manager._base_url}/iptv/user/{customer_id}/expiration"
         return self.get(url)
 
     def get_user_invoices(self, customer_id: str) -> Dict[str, Any]:
         """Fetch user invoices for calculating loan packages."""
+        if self._permission_service and not self._permission_service.is_allowed("crm_get_invoices"):
+            return {"success": False, "error": "Endpoint disabled"}
         url = f"{self._auth_manager._base_url}/users/{customer_id}/invoices?limit=12&page=1"
         return self.get(url)
 
     def get_invoice_amount(self, username: str) -> Dict[str, Any]:
         """Fetch the invoice details and amount for a user."""
+        if self._permission_service and not self._permission_service.is_allowed("crm_get_invoice_amount"):
+            return {"success": False, "error": "Endpoint disabled"}
         url = f"{self._auth_manager._base_url}/invoice/amount"
         payload = {"username": username}
         allowed = [
@@ -290,6 +326,8 @@ class CRMClient:
 
     def activate_package(self, customer_id: str, package_id: int) -> Dict[str, Any]:
         """Activate a package for a user (loan or paid)."""
+        if self._permission_service and not self._permission_service.is_allowed("crm_activate_package"):
+            return {"success": False, "error": "Endpoint disabled"}
         url = f"{self._auth_manager._base_url}/packages/activate"
         payload = {
             "package_id": package_id,
@@ -300,11 +338,15 @@ class CRMClient:
 
     def disconnect_user(self, customer_id: str) -> Dict[str, Any]:
         """Disconnect a user's active session."""
+        if self._permission_service and not self._permission_service.is_allowed("crm_disconnect_user"):
+            return {"success": False, "error": "Endpoint disabled"}
         url = f"{self._auth_manager._base_url}/users/{customer_id}/disconnect"
         return self.post(url, {})
 
     def get_user_sessions(self, customer_id: str, limit: int = 30) -> Dict[str, Any]:
         """Fetch user sessions and filter out unnecessary fields."""
+        if self._permission_service and not self._permission_service.is_allowed("crm_get_user_sessions"):
+            return {"success": False, "error": "Endpoint disabled"}
         url = f"{self._auth_manager._base_url}/UserSession/{customer_id}?limit={limit}&page=1"
         response = self.get(url)
         if response.get("success") and "data" in response:

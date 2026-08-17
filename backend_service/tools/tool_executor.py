@@ -35,19 +35,13 @@ class ToolExecutor:
                     reason="All CRM access has been suspended by an administrator."
                 )
 
-            if not self._permission_svc.is_allowed(tool_name):
-                logger.warning(f"[LAYER 3 BLOCK] Tool '{tool_name}' BLOCKED")
-                raise PermissionDeniedException(
-                    tool_name=tool_name,
-                    reason=f"The action '{tool_name}' is currently disabled. Please contact support."
-                )
         # ──────────────────────────────────────────────────────────────────
 
         logger.info(f"Executing tool {tool_name} with params {parameters}")
         try:
             customer_id = parameters.get("crm_customer_id") or parameters.get("customer_id")
             
-            if tool_name in ("get_customer_info", "get_balance", "get_current_package", "get_available_packages"):
+            if tool_name in ("get_customer_info", "get_current_package", "get_available_packages"):
                 if not customer_id:
                     return {"success": False, "error": "Customer ID required"}
                     

@@ -71,7 +71,7 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("new", self._handle_new))
         self._app.add_handler(CallbackQueryHandler(self._handle_callback_query))
         self._app.add_handler(
-            MessageHandler((filters.TEXT | filters.CONTACT | filters.PHOTO | filters.VOICE | filters.AUDIO) & ~filters.COMMAND, self._handle_message)
+            MessageHandler((filters.TEXT | filters.CONTACT | filters.PHOTO | filters.VOICE | filters.AUDIO | filters.Document.ALL) & ~filters.COMMAND, self._handle_message)
         )
         
         # Add error handler to prevent crashing on Network Errors
@@ -306,13 +306,19 @@ class TelegramBot:
         try:
             image_bytes = None
             image_path = None
-            if message.contact:
+            if message.document:
+                await message.reply_text("❌ عذراً، لدواعي أمنية لا نقبل استقبال الملفات أو المستندات. يرجى إرسال الصورة بشكل عادي (كصورة).")
+                return
+            elif message.contact:
                 if message.contact.user_id == update.effective_user.id:
                     message_text = f"VERIFIED_PHONE:{message.contact.phone_number}"
                 else:
                     await message.reply_text("❌ الرجاء مشاركة جهة اتصالك الخاصة حصراً باستخدام الزر المخصص.")
                     return
             elif message.photo:
+                if not self._facade._backend.permission_service.is_allowed("accept_images"):
+                    await message.reply_text("❌ عذراً، استقبال الصور معطل حالياً.")
+                    return
                 from application.shared.configuration.app_config import AppConfig
                 from datetime import datetime
                 config = AppConfig.from_env()
@@ -324,9 +330,21 @@ class TelegramBot:
                     await message.reply_text(f"❌ عذراً، لقد تجاوزت الحد المسموح بإرسال الصور هذا الشهر ({config.security.max_images_per_month} صورة).")
                     return
                 
+                import time
+                now_ts = time.time()
+                rl_context_id = f"rl_10min_img_{user_id}"
+                rl_data = self._facade._backend.context_service.load_context(rl_context_id)
+                timestamps = rl_data.get("timestamps", [])
+                timestamps = [ts for ts in timestamps if now_ts - ts <= 600]
+                if len(timestamps) >= 3:
+                    await message.reply_text("❌ عذراً، لقد تجاوزت الحد المسموح بإرسال الصور (3 صور كل 10 دقائق). يرجى المحاولة لاحقاً.")
+                    return
+                timestamps.append(now_ts)
+                self._facade._backend.context_service.save_context(rl_context_id, "timestamps", timestamps)
+                
                 self._facade._backend.context_service.save_context(context_id, "count", current_count + 1)
                 
-                message_text = message.caption or "صورة لقيم الراوتر"
+                message_text = message.caption or "[صورة مرفقة]"
                 try:
                     photo_file = await message.photo[-1].get_file()
                     byte_array = await photo_file.download_as_bytearray()
@@ -345,6 +363,9 @@ class TelegramBot:
                 except Exception as e:
                     self._logger.error(f"Failed to download photo: {e}")
             elif message.voice or message.audio:
+                if not self._facade._backend.permission_service.is_allowed("accept_voice"):
+                    await message.reply_text("❌ عذراً، استقبال المقاطع الصوتية معطل حالياً.")
+                    return
                 from application.shared.configuration.app_config import AppConfig
                 from datetime import datetime
                 config = AppConfig.from_env()
@@ -355,6 +376,18 @@ class TelegramBot:
                 if current_count >= config.security.max_voices_per_month:
                     await message.reply_text(f"❌ عذراً، لقد تجاوزت الحد المسموح بالرسائل الصوتية هذا الشهر ({config.security.max_voices_per_month} مقطع).")
                     return
+                    
+                import time
+                now_ts = time.time()
+                rl_context_id = f"rl_10min_voice_{user_id}"
+                rl_data = self._facade._backend.context_service.load_context(rl_context_id)
+                timestamps = rl_data.get("timestamps", [])
+                timestamps = [ts for ts in timestamps if now_ts - ts <= 600]
+                if len(timestamps) >= 3:
+                    await message.reply_text("❌ عذراً، لقد تجاوزت الحد المسموح بالرسائل الصوتية (3 مقاطع كل 10 دقائق). يرجى المحاولة لاحقاً.")
+                    return
+                timestamps.append(now_ts)
+                self._facade._backend.context_service.save_context(rl_context_id, "timestamps", timestamps)
                     
                 self._facade._backend.context_service.save_context(context_id, "count", current_count + 1)
 
@@ -402,6 +435,19 @@ class TelegramBot:
                     return
             else:
                 message_text = message.text
+                
+                if message_text:
+                    import time
+                    now_ts = time.time()
+                    rl_context_id = f"rl_1min_text_{user_id}"
+                    rl_data = self._facade._backend.context_service.load_context(rl_context_id)
+                    timestamps = rl_data.get("timestamps", [])
+                    timestamps = [ts for ts in timestamps if now_ts - ts <= 60]
+                    if len(timestamps) >= 5:
+                        await message.reply_text("❌ عذراً، لقد تجاوزت الحد المسموح بالرسائل النصية (5 رسائل كل دقيقة). يرجى المحاولة لاحقاً.")
+                        return
+                    timestamps.append(now_ts)
+                    self._facade._backend.context_service.save_context(rl_context_id, "timestamps", timestamps)
 
             if not message_text and not image_bytes:
                 return
@@ -512,6 +558,14 @@ class TelegramBot:
                     except Exception:
                         pass
                     await message.reply_text(response.text, reply_markup=reply_markup_regular)
+                elif getattr(message, 'contact', None):
+                    # User just shared contact, remove the keyboard
+                    from telegram import ReplyKeyboardRemove
+                    try:
+                        await context.bot.delete_message(chat_id=message.chat_id, message_id=placeholder_msg.message_id)
+                    except Exception:
+                        pass
+                    await message.reply_text(response.text, reply_markup=ReplyKeyboardRemove())
                 else:
                     # Just edit the streaming placeholder to become the final message
                     try:

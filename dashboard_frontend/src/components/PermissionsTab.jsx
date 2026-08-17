@@ -6,15 +6,17 @@ const API = 'http://localhost:8000/api';
 
 const RISK_CONFIG = {
   CRITICAL: { color: '#d32f2f', bg: '#ffebee', label: 'حرج' },
-  HIGH:     { color: '#ed6c02', bg: '#fff3e0', label: 'عالي' },
-  MEDIUM:   { color: '#ed6c02', bg: '#fff3e0', label: 'متوسط' },
-  LOW:      { color: '#2e7d32', bg: '#e8f5e9', label: 'منخفض' },
+  HIGH: { color: '#ed6c02', bg: '#fff3e0', label: 'عالي' },
+  MEDIUM: { color: '#ed6c02', bg: '#fff3e0', label: 'متوسط' },
+  LOW: { color: '#2e7d32', bg: '#e8f5e9', label: 'منخفض' },
 };
 
 const CATEGORY_LABELS = {
-  GLOBAL:   'التحكم العام',
-  SERVICE:  'التحكم بالخدمات',
+  GLOBAL: 'التحكم العام',
+  SERVICE: 'التحكم بالخدمات',
   CRM_TOOL: 'أدوات CRM',
+  CRM_ENDPOINT: 'روابط CRM الأساسية',
+  MEDIA: 'استقبال الميديا',
 };
 
 const stripEmojis = (str) => {
@@ -37,9 +39,9 @@ function Toggle({ isOn, onChange, disabled }) {
       }}
     >
       <span style={{
-        position: 'absolute', top: 2, left: isOn ? 'calc(100% - 22px)' : 2,
+        position: 'absolute', top: 2, right: isOn ? 'calc(100% - 22px)' : 2,
         width: 20, height: 20, borderRadius: '50%', background: '#fff',
-        transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+        transition: 'right 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
       }} />
     </button>
   );
@@ -70,7 +72,7 @@ function PermissionCard({ perm, toggling, onToggleRequest }) {
             {isEnabled ? 'مفعّل' : 'معطّل'}
           </span>
         </div>
-        <div style={{ fontSize: 14, color: '#616161', lineHeight: 1.6 }}>{perm.description}</div>
+        <div style={{ fontSize: 14, color: '#616161', lineHeight: 1.6 }} dir="auto">{perm.description}</div>
         {perm.updated_at && (
           <div style={{ fontSize: 12, color: '#9e9e9e', marginTop: 8 }}>
             آخر تعديل: {new Date(perm.updated_at).toLocaleString('ar-IQ')} {perm.updated_by ? `بواسطة ${perm.updated_by}` : ''}
@@ -83,11 +85,11 @@ function PermissionCard({ perm, toggling, onToggleRequest }) {
 }
 
 export default function PermissionsTab() {
-  const [permissions, setPermissions]         = useState([]);
-  const [loading, setLoading]                 = useState(true);
-  const [toggling, setToggling]               = useState(null);
-  const [toast, setToast]                     = useState(null);
-  const [lastRefresh, setLastRefresh]         = useState(null);
+  const [permissions, setPermissions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [toggling, setToggling] = useState(null);
+  const [toast, setToast] = useState(null);
+  const [lastRefresh, setLastRefresh] = useState(null);
 
   const { requireAuth, modalProps } = usePasswordAuth();
 
@@ -142,7 +144,7 @@ export default function PermissionsTab() {
 
 
   const grouped = permissions.reduce((acc, p) => {
-    const cat = p.category || 'CRM_TOOL';
+    const cat = p.category || 'CRM_ENDPOINT';
     if (!acc[cat]) acc[cat] = [];
     acc[cat].push(p);
     return acc;
@@ -150,13 +152,13 @@ export default function PermissionsTab() {
 
   const toastStyles = {
     success: { bg: '#e8f5e9', color: '#2e7d32', border: '1px solid #a5d6a7' },
-    warn:    { bg: '#fff3e0', color: '#ed6c02', border: '1px solid #ffcc80' },
-    error:   { bg: '#ffebee', color: '#d32f2f', border: '1px solid #ef9a9a' },
+    warn: { bg: '#fff3e0', color: '#ed6c02', border: '1px solid #ffcc80' },
+    error: { bg: '#ffebee', color: '#d32f2f', border: '1px solid #ef9a9a' },
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 32, maxWidth: 960, margin: '0 auto', width: '100%', fontFamily: 'system-ui, sans-serif' }}>
-      
+
       <PasswordPromptModal {...modalProps} />
 
       {/* Toast */}
@@ -178,7 +180,7 @@ export default function PermissionsTab() {
       {/* ── رأس الصفحة ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '2px solid #eee', paddingBottom: 16 }}>
         <div>
-           <h1 style={{ margin: 0, fontSize: 24, fontWeight: 'bold', color: '#212121' }}>
+          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 'bold', color: '#212121' }}>
             إدارة الصلاحيات والوصول
           </h1>
           <div style={{ fontSize: 14, color: '#757575', marginTop: 4 }}>لوحة تحكم النظام - إدارة أمان العمليات</div>
@@ -191,7 +193,7 @@ export default function PermissionsTab() {
               if (res.ok) alert(data.message);
               else alert('فشل مسح البيانات المؤقتة');
             }}
-            style={{ 
+            style={{
               background: '#f43f5e', color: 'white', border: 'none', borderRadius: 4,
               padding: '8px 16px', fontWeight: 600, fontSize: 14,
               display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer'
@@ -217,7 +219,7 @@ export default function PermissionsTab() {
           <div style={{ fontSize: 14 }}>يتم جلب سجلات الصلاحيات من الخادم</div>
         </div>
       ) : (
-        ['GLOBAL', 'SERVICE', 'CRM_TOOL'].map(cat => {
+        ['GLOBAL', 'SERVICE', 'CRM_ENDPOINT', 'CRM_TOOL', 'MEDIA'].map(cat => {
           const items = grouped[cat];
           if (!items || items.length === 0) return null;
           return (

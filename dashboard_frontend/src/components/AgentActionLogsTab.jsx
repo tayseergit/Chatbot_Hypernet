@@ -47,14 +47,14 @@ const TYPE_CONFIG = {
 };
 
 export default function AgentActionLogsTab() {
-  const [selectedType, setSelectedType]     = useState('ALL');
+  const [selectedType, setSelectedType] = useState('ALL');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
-  const [searchTerm, setSearchTerm]         = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
   const [activeModalLog, setActiveModalLog] = useState(null);
-  const [logs, setLogs]                     = useState([]);
-  const [loading, setLoading]               = useState(false);
-  const [hasFetched, setHasFetched]         = useState(false);
-  const [page, setPage]                     = useState(1);
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [hasFetched, setHasFetched] = useState(false);
+  const [page, setPage] = useState(1);
   const perPage = 10;
 
   const fetchLogs = async () => {

@@ -238,7 +238,14 @@ class ChatbotFacade:
             self._logger.info(f"Step 4 - Response Building Time: {t_response:.2f}ms")
 
             # 5. Update session with assistant response
-            self._backend.message_service.save_messages(session.session_id, "bot", response.text)
+            text_to_save = response.text
+            if getattr(response, "actions", []):
+                import json
+                for action in response.actions:
+                    if action.get("type") == "button":
+                        text_to_save += f'\n[ACTION_BUTTON: {json.dumps(action, ensure_ascii=False)}]'
+            
+            self._backend.message_service.save_messages(session.session_id, "bot", text_to_save)
 
             # 6. Record analytics
             latency = (time.time() - start_time) * 1000
@@ -349,13 +356,15 @@ class ChatbotFacade:
                 if res.get("success"):
                     msg = res.get("data", {}).get("message", "")
                     if "successfully" in msg.lower() or "success" in msg.lower():
-                        return "✅ تم تمديد صلاحية حسابك بنجاح!"
+                        res_msg = "✅ تم تمديد صلاحية حسابك بنجاح!"
                     elif "cannot extend" in msg.lower():
-                        return "❌ عذراً، لا يمكنك تمديد صلاحية هذا الحساب (ربما استنفدت الحد الأقصى)."
+                        res_msg = "❌ عذراً، لا يمكنك تمديد صلاحية هذا الحساب (ربما استنفدت الحد الأقصى)."
                     else:
-                        return f"نتيجة العملية: {msg}"
+                        res_msg = f"نتيجة العملية: {msg}"
                 else:
-                    return "❌ عذراً، حدث خطأ أثناء محاولة تمديد الصلاحية."
+                    res_msg = "❌ عذراً، حدث خطأ أثناء محاولة تمديد الصلاحية."
+                self._backend.message_service.save_messages(session.session_id, "bot", res_msg)
+                return res_msg
 
             if action_data == "req_extend_bill":
                 # Only reachable if directly triggered (our bot uses confirmation)
@@ -363,12 +372,16 @@ class ChatbotFacade:
                 
             if action_data == "req_disconnect_session":
                 if not session.customer_id:
-                    return "❌ لا يمكننا تنفيذ الطلب لعدم وجود بيانات الحساب."
-                res = self._backend.crm_client.disconnect_user(session.customer_id)
-                if res.get("success"):
-                    return "✅ تم إرسال أمر فصل الجلسة بنجاح! يرجى الانتظار قليلاً ليعاد تهيئة اتصالك بالإنترنت."
+                    res_msg = "❌ لا يمكننا تنفيذ الطلب لعدم وجود بيانات الحساب."
                 else:
-                    return "❌ عذراً، حدث خطأ أثناء محاولة فصل الجلسة. يرجى إعادة التشغيل يدوياً من مفتاح الراوتر."
+                    res = self._backend.crm_client.disconnect_user(session.customer_id)
+                    if res.get("success") and res.get("data", {}).get("status") is not False:
+                        res_msg = "✅ تم إرسال أمر فصل الجلسة بنجاح! يرجى الانتظار قليلاً ليعاد تهيئة اتصالك بالإنترنت."
+                    else:
+                        error_msg = res.get("data", {}).get("message", "غير معروف") if res.get("success") else res.get("error", "غير معروف")
+                        res_msg = f"❌ عذراً، حدث خطأ أثناء محاولة فصل الجلسة. (السبب: {error_msg})"
+                self._backend.message_service.save_messages(session.session_id, "bot", res_msg)
+                return res_msg
                     
             elif action_data.startswith("activate_pkg_"):
                 pkg_id_str = action_data.replace("activate_pkg_", "")
@@ -457,15 +470,17 @@ class ChatbotFacade:
                     if res.get("success"):
                         data = res.get("data", {})
                         if data.get("status") is False:
-                            return f"❌ عذراً، لم تنجح العملية: {data.get('message', 'رصيد غير كافٍ')}"
-                            
-                        msg = str(data.get("message", ""))
-                        if data.get("status") is True or "successfully" in msg.lower() or "success" in msg.lower() or "تم" in msg:
-                            return "✅ تم تفعيل الباقة بنجاح!"
+                            res_msg = f"❌ عذراً، لم تنجح العملية: {data.get('message', 'رصيد غير كافٍ')}"
                         else:
-                            return f"نتيجة العملية: {msg}"
+                            msg = str(data.get("message", ""))
+                            if data.get("status") is True or "successfully" in msg.lower() or "success" in msg.lower() or "تم" in msg:
+                                res_msg = "✅ تم تفعيل الباقة بنجاح!"
+                            else:
+                                res_msg = f"نتيجة العملية: {msg}"
                     else:
-                        return "❌ عذراً، حدث خطأ أثناء تواصلنا مع المخدم لتفعيل الباقة."
+                        res_msg = "❌ عذراً، حدث خطأ أثناء تواصلنا مع المخدم لتفعيل الباقة."
+                    self._backend.message_service.save_messages(session.session_id, "bot", res_msg)
+                    return res_msg
                     
             return "إجراء غير معروف."
         except Exception as e:

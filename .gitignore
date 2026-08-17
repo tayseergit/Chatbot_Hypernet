@@ -25,3 +25,4 @@ node_modules/
 *.db
 /models/
 /logs/
+context_data.json

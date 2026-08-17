@@ -74,7 +74,8 @@ export function PasswordPromptModal({ isOpen, onClose, onSuccess, actionName }) 
         throw new Error(err.detail || 'كلمة المرور غير صحيحة');
       }
       const data = await res.json();
-      if (onSuccess) onSuccess(data.admin);
+      const adminName = (data.admin && data.admin.username) ? data.admin.username : (data.admin || 'admin');
+      if (onSuccess) onSuccess(adminName);
     } catch (err) {
       setError(err.message);
     } finally {

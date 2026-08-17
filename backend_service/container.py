@@ -17,12 +17,13 @@ class BackendContainer:
         self.session_service = SessionService()
         self.message_service = MessageService()
         self.context_service = ContextService()
-        self.authentication_service = AuthenticationService()
-        self.action_log_service = ActionLogService()
-        self.crm_log_service = CRMLogService()
-
+        
         # Permission service — single shared instance (owns the cache)
         self.permission_service = PermissionService()
+        
+        self.authentication_service = AuthenticationService(permission_service=self.permission_service)
+        self.action_log_service = ActionLogService()
+        self.crm_log_service = CRMLogService()
 
         # Seed default permissions into DB on startup (idempotent)
         try:
@@ -36,7 +37,7 @@ class BackendContainer:
 
         # Tools
         from backend_service.crm.crm_client import CRMClient
-        self.crm_client = CRMClient()
+        self.crm_client = CRMClient(permission_service=self.permission_service)
 
         # ToolExecutor receives permission_service for Layer 3 enforcement and crm_client
         self.tool_executor = ToolExecutor(

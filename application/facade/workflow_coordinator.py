@@ -225,7 +225,6 @@ class WorkflowCoordinator:
     def _map_intent_to_backend_tool(self, intent: str) -> str:
         """Map the agent intent directly to a backend_service Tool name."""
         mapping = {
-            "check_balance": "get_balance",
             "check_package": "get_current_package",
             "billing": "get_invoice_amount",
             "extend_bill": "check_extend_status",
@@ -242,7 +241,6 @@ class WorkflowCoordinator:
     def _map_intent_to_crm_operation(self, intent: str) -> str:
         """Map the agent intent to a specific CRM operation."""
         mapping = {
-            "check_balance": "get_balance",
             "check_package": "get_packages",
             "billing": "get_invoice_amount",
             "extend_bill": "extend_bill",

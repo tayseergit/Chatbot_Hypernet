@@ -10,8 +10,8 @@ import re
 logger = AppLogger.get_logger("authentication_service")
 
 class AuthenticationService:
-    def __init__(self):
-        self._crm = CRMClient()
+    def __init__(self, permission_service=None):
+        self._crm = CRMClient(permission_service=permission_service)
 
     def authenticate_by_phone(self, phone: str, session_id: str) -> bool:
         """Attempt to authenticate user using their phone number with advanced fallback."""

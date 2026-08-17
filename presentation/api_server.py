@@ -57,6 +57,14 @@ def create_app(facade) -> FastAPI:
         allow_headers=["*"],
     )
 
+    import os
+    from fastapi.staticfiles import StaticFiles
+    
+    media_dir = os.path.join(os.getcwd(), "media")
+    if not os.path.exists(media_dir):
+        os.makedirs(media_dir)
+    app.mount("/media", StaticFiles(directory=media_dir), name="media")
+
     @app.on_event("startup")
     def startup_event():
         import threading

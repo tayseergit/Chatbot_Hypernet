@@ -101,7 +101,7 @@ export default function SessionsChatTab() {
     if (chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages, selectedSessionId]);
+  }, [messages.length, selectedSessionId]);
 
   const handleSendReply = () => {
     if (!replyText.trim() || sendingReply || !selectedSessionId) return;
@@ -127,13 +127,19 @@ export default function SessionsChatTab() {
     }
   };
 
-  // Helper to render message content (Text or Photo)
+  // Helper to render message content (Text, Photo, or Voice)
   const renderMessageContent = (text, isUser) => {
-    if (text.includes('[صورة]')) {
-      const match = text.match(/\[صورة\]\s*(\S+)/);
-      const relativePath = match ? match[1] : '';
-      const fullUrl = relativePath.startsWith('http') ? relativePath : `${API_BASE}${relativePath}`;
-      const caption = text.replace(/\[صورة\]\s*\S+/, '').trim();
+    if (!text) return text;
+
+    // Handle Image Attachments (New Format and Old Format)
+    const imgMatch = text.match(/\[Attached Image:\s*([^\]]+)\]/) || text.match(/\[صورة\]\s*(\S+)/);
+    const voiceMatch = text.match(/\[Attached Voice:\s*([^\]]+)\]/);
+
+    if (imgMatch) {
+      const filename = imgMatch[1];
+      // Backward compatibility for old relative paths
+      const fullUrl = filename.startsWith('http') ? filename : (filename.includes('/') ? `${API_BASE}${filename}` : `${API_BASE}/media/${filename}`);
+      const caption = text.replace(/\[Attached Image:\s*[^\]]+\]/, '').replace(/\[صورة\]\s*\S+/, '').trim();
 
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -168,6 +174,50 @@ export default function SessionsChatTab() {
         </div>
       );
     }
+
+    if (voiceMatch) {
+      const filename = voiceMatch[1];
+      const fullUrl = `${API_BASE}/media/${filename}`;
+      const caption = text.replace(/\[Attached Voice:\s*[^\]]+\]/, '').trim();
+
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <audio controls style={{ maxWidth: 280, height: 40, outline: 'none' }}>
+            <source src={fullUrl} />
+            Your browser does not support the audio element.
+          </audio>
+          {caption && <span style={{ fontSize: 13, marginTop: 4 }}>{caption}</span>}
+        </div>
+      );
+    }
+
+    // Check for ACTION_BUTTONs
+    const parts = text.split(/\[ACTION_BUTTON:\s*({.*?})\]/g);
+    if (parts.length > 1) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {parts.map((part, index) => {
+            if (index % 2 === 1) { // It's the JSON button part
+              try {
+                const btnData = JSON.parse(part);
+                return (
+                  <div key={index} style={{
+                    display: 'inline-flex', padding: '6px 12px', background: '#3b82f6', color: 'white',
+                    borderRadius: 6, fontSize: 13, alignSelf: 'flex-start', marginTop: 4, cursor: 'default'
+                  }}>
+                    {btnData.text || 'زر تفاعلي'}
+                  </div>
+                );
+              } catch (e) {
+                return null; // Ignore invalid JSON
+              }
+            }
+            return part ? <span key={index}>{part}</span> : null;
+          })}
+        </div>
+      );
+    }
+
     return text;
   };
 
