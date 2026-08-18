@@ -130,10 +130,13 @@ export default function PermissionsTab() {
       const res = await fetch(`${API}/permissions/${encodeURIComponent(perm.tool_name)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_enabled: newState, updated_by: adminUsername }),
+        body: JSON.stringify({ is_enabled: newState, updated_by: adminUsername, updated_at: perm.updated_at || null }),
       });
+      if (res.status === 409) {
+        throw new Error("تنبيه: قام مدير آخر بتعديل هذه البيانات أثناء قرائتك لها. يرجى التحديث لتجنب الكتابة فوق بياناته.");
+      }
       if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'فشل التحديث'); }
-      setPermissions(prev => prev.map(p => p.tool_name === perm.tool_name ? { ...p, is_enabled: newState } : p));
+      setPermissions(prev => prev.map(p => p.tool_name === perm.tool_name ? { ...p, is_enabled: newState, updated_at: new Date().toISOString() } : p));
       showToast(`${stripEmojis(perm.display_name)} — ${newState ? 'تم التفعيل' : 'تم التعطيل'}`, newState ? 'success' : 'warn');
     } catch (e) {
       showToast(`خطأ: ${e.message}`, 'error');

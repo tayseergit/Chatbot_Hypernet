@@ -149,18 +149,18 @@ class WorkflowCoordinator:
         if stream_callback:
             if "RAG" in requires and "CRM" in requires:
                 generator = self._llm.generate_combined_response_stream(
-                    question=message_text, intent=decision.intent, rag_context=rag_context, crm_data=crm_data, history=history, image_bytes=image_bytes
+                    question=message_text, intent=decision.intent, rag_context=rag_context, crm_data=crm_data, history=history, image_bytes=image_bytes, user_id=session_id
                 )
             elif "RAG" in requires:
                 generator = self._llm.generate_rag_answer_stream(
-                    question=message_text, context=rag_context, history=history, image_bytes=image_bytes
+                    question=message_text, context=rag_context, history=history, image_bytes=image_bytes, user_id=session_id
                 )
             elif "CRM" in requires:
                 generator = self._llm.summarize_crm_data_stream(
-                    question=message_text, crm_data=crm_data, history=history, image_bytes=image_bytes
+                    question=message_text, crm_data=crm_data, history=history, image_bytes=image_bytes, user_id=session_id
                 )
             else:
-                generator = self._llm.generate_greeting_stream(message_text)
+                generator = self._llm.generate_greeting_stream(message_text, user_id=session_id)
                 
             for chunk in generator:
                 llm_answer += chunk
@@ -173,24 +173,27 @@ class WorkflowCoordinator:
                     rag_context=rag_context,
                     crm_data=crm_data,
                     history=history,
-                    image_bytes=image_bytes
+                    image_bytes=image_bytes,
+                    user_id=session_id
                 )
             elif "RAG" in requires:
                 llm_answer = self._llm.generate_rag_answer(
                     question=message_text,
                     context=rag_context,
                     history=history,
-                    image_bytes=image_bytes
+                    image_bytes=image_bytes,
+                    user_id=session_id
                 )
             elif "CRM" in requires:
                 llm_answer = self._llm.summarize_crm_data(
                     question=message_text,
                     crm_data=crm_data,
                     history=history,
-                    image_bytes=image_bytes
+                    image_bytes=image_bytes,
+                    user_id=session_id
                 )
             else:
-                llm_answer = self._llm.generate_greeting(message_text)
+                llm_answer = self._llm.generate_greeting(message_text, user_id=session_id)
 
         if self._action_log_service and session_id:
             llm_inputs = {

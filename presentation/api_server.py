@@ -46,6 +46,7 @@ def create_app(facade) -> FastAPI:
     class PermissionUpdateRequest(BaseModel):
         is_enabled: bool
         updated_by: Optional[str] = "dashboard_admin"
+        updated_at: Optional[str] = None
 
     app = FastAPI(title="ISP Chatbot API")
 
@@ -711,9 +712,11 @@ def create_app(facade) -> FastAPI:
     def update_permission(tool_name: str, req: PermissionUpdateRequest, admin: dict = Depends(get_current_admin)):
         try:
             updated_by = req.updated_by or admin.get("username", "admin")
-            success = facade._backend.permission_service.set_permission(tool_name, req.is_enabled, updated_by)
+            success, msg = facade._backend.permission_service.set_permission(tool_name, req.is_enabled, updated_by, req.updated_at)
             if not success:
-                raise HTTPException(status_code=400, detail="Failed to update permission in DB")
+                if msg == "409_CONFLICT":
+                    raise HTTPException(status_code=409, detail="Conflict: The data was modified by another user.")
+                raise HTTPException(status_code=400, detail=msg)
             return {"status": "success", "message": f"Permission {tool_name} updated"}
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
@@ -796,12 +799,15 @@ def create_app(facade) -> FastAPI:
         Enable or disable a specific agent tool/capability.
         Changes take effect within 30 seconds (cache TTL).
         """
-        success = facade._backend.permission_service.set_permission(
+        success, msg = facade._backend.permission_service.set_permission(
             tool_name=tool_name,
             is_enabled=req.is_enabled,
             updated_by=req.updated_by,
+            updated_at=req.updated_at
         )
         if not success:
+            if msg == "409_CONFLICT":
+                raise HTTPException(status_code=409, detail="Conflict: The data was modified by another user.")
             raise HTTPException(
                 status_code=404,
                 detail=f"Permission '{tool_name}' not found in database. Run /api/permissions/seed first."
@@ -1014,12 +1020,13 @@ def create_app(facade) -> FastAPI:
     @app.get("/api/admin/roles")
     def get_roles(admin: dict = Depends(require_permissions(["manage_admins"]))):
         roles = admin_mgt_service.get_roles()
-        return [{"id": r.id, "name": r.name, "description": r.description, "permissions": r.permissions} for r in roles]
+        return [{"id": r.id, "name": r.name, "description": r.description, "permissions": r.permissions, "updated_at": str(r.updated_at) if r.updated_at else None} for r in roles]
 
     class CreateRoleRequest(BaseModel):
         name: str
         description: str
         permissions: List[str]
+        updated_at: Optional[str] = None
         
     @app.post("/api/admin/roles")
     def create_role(req: CreateRoleRequest, admin: dict = Depends(require_permissions(["manage_admins"]))):
@@ -1030,8 +1037,10 @@ def create_app(facade) -> FastAPI:
         
     @app.put("/api/admin/roles/{role_id}")
     def update_role(role_id: int, req: CreateRoleRequest, admin: dict = Depends(require_permissions(["manage_admins"]))):
-        success, msg = admin_mgt_service.update_role(role_id, req.name, req.description, req.permissions)
+        success, msg = admin_mgt_service.update_role(role_id, req.name, req.description, req.permissions, req.updated_at)
         if not success:
+            if msg == "409_CONFLICT":
+                raise HTTPException(status_code=409, detail="Conflict: The data was modified by another user.")
             raise HTTPException(status_code=400, detail=msg)
         return {"status": "success", "message": msg}
 
@@ -1054,6 +1063,7 @@ def create_app(facade) -> FastAPI:
         role_id: Optional[int] = None
         custom_permissions: List[str] = []
         is_active: bool = True
+        updated_at: Optional[str] = None
 
     @app.post("/api/admin/users")
     def create_admin_user(req: AdminUserRequest, admin: dict = Depends(require_permissions(["manage_admins"]))):
@@ -1068,6 +1078,8 @@ def create_app(facade) -> FastAPI:
     def update_admin_user(admin_id: int, req: AdminUserRequest, admin: dict = Depends(require_permissions(["manage_admins"]))):
         success, msg = admin_mgt_service.update_admin(admin_id, req.dict())
         if not success:
+            if msg == "409_CONFLICT":
+                raise HTTPException(status_code=409, detail="Conflict: The data was modified by another user.")
             raise HTTPException(status_code=400, detail=msg)
         return {"status": "success", "message": msg}
 

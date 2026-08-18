@@ -25,13 +25,55 @@ class ResponseService:
     @log_operation()
     def generate(self, session_id: str, intent: str, llm_answer: str,
                  rag_result: Optional[ServiceResult] = None,
-                 crm_result: Optional[ServiceResult] = None) -> ChatResponse:
+                 crm_result: Optional[ServiceResult] = None,
+                 user_id: Optional[str] = None) -> ChatResponse:
         """Generate a formatted ChatResponse."""
         # Build response text
         text = self._builder.build(intent, llm_answer, rag_result, crm_result)
 
         # Format for Telegram
         formatted = self._formatter.format_for_telegram(text)
+        
+        actions = []
+
+        # Determine if we need to add the support button
+        wants_support = False
+        if "[SUPPORT_BTN]" in formatted:
+            wants_support = True
+            formatted = formatted.replace("[SUPPORT_BTN]", "")
+            
+        import urllib.parse
+        import re
+        from application.shared.configuration.app_config import get_whatsapp_link
+        _whatsapp = get_whatsapp_link(None)
+        if _whatsapp:
+            # Track if we found a whatsapp link
+            found_wa = False
+            
+            if re.search(r'https?://(?:wa\.me|api\.whatsapp\.com)', formatted):
+                found_wa = True
+                wants_support = True
+                
+            if wants_support and user_id:
+                wa_url_with_text = get_whatsapp_link(user_id)
+                
+                if found_wa:
+                    # Completely remove markdown links containing whatsapp
+                    formatted, count = re.subn(r'\[([^\]]*)\]\(https?://(?:wa\.me|api\.whatsapp\.com)[^\)]*\)', 
+                                            "", formatted)
+                    
+                    # Also completely remove any raw wa.me URL
+                    if count == 0:
+                        formatted = re.sub(r'https?://(?:wa\.me|api\.whatsapp\.com)[^\s\)]*', 
+                                        "", formatted)
+                wa_url_with_text = get_whatsapp_link(user_id)
+                
+                # Add a native Telegram Inline Button for the URL
+                actions.append({
+                    "type": "button",
+                    "text": "💬 تواصل مع الدعم الفني",
+                    "url": wa_url_with_text
+                })
 
         # Determine sources used
         sources = []
@@ -46,7 +88,6 @@ class ResponseService:
         # The LLM cannot create its own actions.
         ALLOWED_ACTIONS = {"confirm_extend_bill", "req_extend_bill", "req_disconnect_session"}
         
-        actions = []
         for action_match in re.finditer(r'\[ACTION_BUTTON:\s*({.*?})\]', formatted, re.DOTALL):
             try:
                 action_data = json.loads(action_match.group(1))

@@ -61,7 +61,7 @@ class AdminManagementService:
         finally:
             db.close()
 
-    def update_role(self, role_id: int, name: str, description: str, permissions: List[str]) -> Tuple[bool, str]:
+    def update_role(self, role_id: int, name: str, description: str, permissions: List[str], updated_at: str = None) -> Tuple[bool, str]:
         db = SessionLocal()
         try:
             role = db.query(AdminRole).filter(AdminRole.id == role_id).first()
@@ -70,6 +70,9 @@ class AdminManagementService:
             
             if role.name == 'Super Admin':
                 return False, "لا يمكن تعديل الدور الأساسي (Super Admin)."
+            
+            if updated_at and role.updated_at and str(role.updated_at) != updated_at:
+                return False, "409_CONFLICT"
             
             # Check name conflict
             existing = db.query(AdminRole).filter(AdminRole.name == name.strip(), AdminRole.id != role_id).first()
@@ -137,7 +140,8 @@ class AdminManagementService:
                     "custom_permissions": custom_perms,
                     "effective_permissions": all_perms,
                     "last_login_at": admin.last_login_at.strftime("%Y-%m-%d %H:%M") if admin.last_login_at else None,
-                    "created_at": admin.created_at.strftime("%Y-%m-%d %H:%M") if admin.created_at else None
+                    "created_at": admin.created_at.strftime("%Y-%m-%d %H:%M") if admin.created_at else None,
+                    "updated_at": str(admin.updated_at) if admin.updated_at else None
                 })
             return result
         finally:
@@ -174,6 +178,10 @@ class AdminManagementService:
             admin = db.query(DashboardAdmin).filter(DashboardAdmin.id == admin_id).first()
             if not admin:
                 return False, "المدير غير موجود."
+                
+            provided_updated_at = data.get("updated_at")
+            if provided_updated_at and admin.updated_at and str(admin.updated_at) != provided_updated_at:
+                return False, "409_CONFLICT"
                 
             username = (data.get("username") or "").strip()
             if username != admin.username:

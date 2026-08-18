@@ -10,7 +10,7 @@ import asyncio
 from typing import Optional
 
 from application.monitoring.logger import AppLogger
-from application.shared.configuration.app_config import SUPPORT_FALLBACK_MESSAGE
+from application.shared.configuration.app_config import get_support_fallback_message
 
 
 class TelegramBot:
@@ -50,6 +50,7 @@ class TelegramBot:
             commands = [
                 BotCommand("start", "بدء المحادثة"),
                 BotCommand("new", "بدء موضوع جديد (نسيان السياق السابق)"),
+                BotCommand("id", "الحصول على رقم حسابك (للدعم الفني)"),
                 BotCommand("logout", "تسجيل الخروج من حسابك")
             ]
             await application.bot.set_my_commands(commands)
@@ -69,6 +70,7 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("start", self._handle_start))
         self._app.add_handler(CommandHandler("logout", self._handle_logout))
         self._app.add_handler(CommandHandler("new", self._handle_new))
+        self._app.add_handler(CommandHandler("id", self._handle_id))
         self._app.add_handler(CallbackQueryHandler(self._handle_callback_query))
         self._app.add_handler(
             MessageHandler((filters.TEXT | filters.CONTACT | filters.PHOTO | filters.VOICE | filters.AUDIO | filters.Document.ALL) & ~filters.COMMAND, self._handle_message)
@@ -132,6 +134,17 @@ class TelegramBot:
             "اكتب سؤالك وسأساعدك! 💬"
         )
         await update.message.reply_text(welcome)
+
+    async def _handle_id(self, update, context) -> None:
+        """Handle /id command."""
+        user_id = str(update.effective_user.id)
+        
+        if not await self._check_rate_limit(user_id, "/id command"):
+            return
+
+        text = "هذا الـ ID يطلب من الدعم الفني للتعرف على محادثتك (اضغط على الرقم في الرسالة التالية لنسخه):"
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=text, parse_mode="HTML")
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=f"<code>{user_id}</code>", parse_mode="HTML")
 
     async def _handle_logout(self, update, context) -> None:
         """Handle /logout command."""
@@ -532,8 +545,11 @@ class TelegramBot:
                         for action in response.actions:
                             if action.get("type") == "button":
                                 btn_text = action.get("text", "تأكيد")
-                                btn_data = action.get("callback_data", "unknown")
-                                keyboard.append([InlineKeyboardButton(btn_text, callback_data=btn_data)])
+                                if "url" in action:
+                                    keyboard.append([InlineKeyboardButton(btn_text, url=action["url"])])
+                                else:
+                                    btn_data = action.get("callback_data", "unknown")
+                                    keyboard.append([InlineKeyboardButton(btn_text, callback_data=btn_data)])
                             elif action.get("type") == "document":
                                 doc_path = action.get("path")
                                 import os
@@ -585,7 +601,7 @@ class TelegramBot:
 
             except Exception as e:
                 self._logger.error(f"Error handling Telegram message: {e}")
-                await message.reply_text(SUPPORT_FALLBACK_MESSAGE)
+                await message.reply_text(get_support_fallback_message(str(message.from_user.id)))
         finally:
             if tracer and token is not None:
                 tracer.dump_trace()

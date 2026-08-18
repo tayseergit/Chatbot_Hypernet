@@ -289,9 +289,12 @@ function RoleModal({ role, availablePermissions, onClose, onSave, token }) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ name, description: desc, permissions: perms })
+        body: JSON.stringify({ name, description: desc, permissions: perms, updated_at: role ? role.updated_at : null })
       });
       const data = await res.json();
+      if (res.status === 409) {
+        throw new Error("تنبيه: قام مدير آخر بتعديل هذه البيانات أثناء قرائتك لها. يرجى التحديث لتجنب الكتابة فوق بياناته.");
+      }
       if (!res.ok) throw new Error(data.detail || 'Error');
       onSave();
       onClose();
@@ -369,7 +372,8 @@ function UserModal({ user, roles, availablePermissions, onClose, onSave, token }
         email: email || null,
         role_id: roleId ? parseInt(roleId) : null,
         custom_permissions: customPerms,
-        is_active: isActive
+        is_active: isActive,
+        updated_at: user ? user.updated_at : null
       };
       if (password) payload.password = password;
 
@@ -382,6 +386,9 @@ function UserModal({ user, roles, availablePermissions, onClose, onSave, token }
         body: JSON.stringify(payload)
       });
       const data = await res.json();
+      if (res.status === 409) {
+        throw new Error("تنبيه: قام مدير آخر بتعديل هذه البيانات أثناء قرائتك لها. يرجى التحديث لتجنب الكتابة فوق بياناته.");
+      }
       if (!res.ok) throw new Error(data.detail || 'Error');
       onSave();
       onClose();

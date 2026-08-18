@@ -6,7 +6,7 @@ It includes a short-lived cache (30 seconds) to avoid hammering the DB
 on every agent action, while still reacting quickly to dashboard changes.
 """
 import time
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Tuple
 
 from backend_service.core.database import SessionLocal
 from backend_service.core.models.agent_permission import AgentPermission
@@ -241,17 +241,17 @@ class PermissionService:
         finally:
             db.close()
 
-    def set_permission(self, tool_name: str, is_enabled: bool, updated_by: str = "admin") -> bool:
+    def set_permission(self, tool_name: str, is_enabled: bool, updated_by: str = "admin", updated_at: str = None) -> Tuple[bool, str]:
         """
         Enable or disable a specific tool from the dashboard.
         Invalidates cache immediately so the change takes effect within seconds.
         """
-        success = self._set_permission_in_db(tool_name, is_enabled, updated_by)
+        success, msg = self._set_permission_in_db(tool_name, is_enabled, updated_by, updated_at)
         if success:
             self._invalidate_cache()
             action = "ENABLED" if is_enabled else "DISABLED"
             logger.info(f"[PERMISSION] '{tool_name}' {action} by '{updated_by}'")
-        return success
+        return success, msg
 
     def seed_defaults(self) -> int:
         """Insert default permissions if they don't exist. Returns count inserted."""
@@ -298,7 +298,7 @@ class PermissionService:
         finally:
             db.close()
 
-    def _set_permission_in_db(self, tool_name: str, is_enabled: bool, updated_by: str) -> bool:
+    def _set_permission_in_db(self, tool_name: str, is_enabled: bool, updated_by: str, updated_at: str = None) -> Tuple[bool, str]:
         """Update a single permission row in the DB."""
         db = SessionLocal()
         try:
@@ -306,17 +306,20 @@ class PermissionService:
                 AgentPermission.tool_name == tool_name
             ).first()
             if row:
+                if updated_at and row.updated_at and str(row.updated_at) != updated_at:
+                    return False, "409_CONFLICT"
+                    
                 row.is_enabled = is_enabled
                 row.updated_by = updated_by
                 db.commit()
-                return True
+                return True, ""
             else:
                 logger.warning(f"[PERMISSION] tool_name '{tool_name}' not found in DB")
-                return False
+                return False, "Not found"
         except Exception as e:
             db.rollback()
             logger.error(f"[PERMISSION] DB update failed for '{tool_name}': {e}")
-            return False
+            return False, str(e)
         finally:
             db.close()
 

@@ -29,13 +29,28 @@ try:
 except ImportError:
     pass
 
-_whatsapp = _config_data.get("whatsapp_link", "https://wa.me/967770000000")
-_call_center = _config_data.get("call_center_number", "967770000000")
-SUPPORT_FALLBACK_MESSAGE = _config_data.get("messages", {}).get("fallback_error", "حدث خطأ. يرجى التواصل مع الدعم .").format(whatsapp_link=_whatsapp, call_center_number=_call_center)
+import urllib.parse
 
-def get_message(key: str, **kwargs) -> str:
+def get_whatsapp_link(user_id: Optional[str] = None) -> str:
+    base_link = _config_data.get("whatsapp_link", "https://wa.me/963932274222")
+    if user_id:
+        text = f"ارسل الرسالة كما هي ليستطيع الموظف التعرف على محادثتك:\n{user_id}"
+        encoded_text = urllib.parse.quote(text)
+        return f"{base_link}?text={encoded_text}"
+    return base_link
+
+_call_center = _config_data.get("call_center_number", "963932274222")
+
+def get_support_fallback_message(user_id: Optional[str] = None) -> str:
+    template = _config_data.get("messages", {}).get("fallback_error", "حدث خطأ غير متوقع. يرجى المتابعة مع الدعم عبر واتساب: {whatsapp_link}")
+    return template.format(whatsapp_link=get_whatsapp_link(user_id), call_center_number=_call_center)
+
+# Provide fallback for older imports that might still look for a static string
+SUPPORT_FALLBACK_MESSAGE = get_support_fallback_message()
+
+def get_message(key: str, user_id: Optional[str] = None, **kwargs) -> str:
     msg = _config_data.get("messages", {}).get(key, "")
-    kwargs.setdefault("whatsapp_link", _whatsapp)
+    kwargs.setdefault("whatsapp_link", get_whatsapp_link(user_id))
     kwargs.setdefault("call_center_number", _call_center)
     return msg.format(**kwargs)
 

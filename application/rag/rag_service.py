@@ -209,11 +209,10 @@ class RAGService:
             CRMLogService().log_request(
                 endpoint="ChromaDB / RAG Search",
                 method="RAG",
-                customer_id=None,
+                payload={"query": q_text},
+                response={"context_length": len(context), "documents_found": len(ranked)},
                 status_code=200,
-                latency_ms=latency,
-                query_params={"query": q_text},
-                response_data={"context_length": len(context), "documents_found": len(ranked)}
+                latency_ms=latency
             )
         except Exception as e:
             self._logger.warning(f"Failed to log RAG search: {e}")

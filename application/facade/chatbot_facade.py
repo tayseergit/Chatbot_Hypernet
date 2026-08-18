@@ -9,7 +9,7 @@ import time
 import asyncio
 from typing import Dict, Any, Optional, List, Callable
 
-from application.shared.configuration.app_config import AppConfig, SUPPORT_FALLBACK_MESSAGE
+from application.shared.configuration.app_config import AppConfig, get_support_fallback_message
 from application.shared.dto.chat_message import ChatMessage
 from application.shared.dto.chat_response import ChatResponse
 from application.shared.dto.chat_response import ChatResponse
@@ -233,6 +233,7 @@ class ChatbotFacade:
                 llm_answer=workflow_results["llm_answer"],
                 rag_result=workflow_results.get("rag_result"),
                 crm_result=workflow_results.get("crm_result"),
+                user_id=user_id,
             )
             t_response = (time.time() - t3) * 1000
             self._logger.info(f"Step 4 - Response Building Time: {t_response:.2f}ms")
@@ -297,10 +298,13 @@ class ChatbotFacade:
 
 
         except Exception as e:
+            import traceback
+            with open("crash_debug.txt", "w", encoding="utf-8") as f:
+                f.write(traceback.format_exc())
             self._logger.exception(f"Error handling message: {e}")
             return ChatResponse.error_response(
                 user_id,
-                SUPPORT_FALLBACK_MESSAGE,
+                get_support_fallback_message(user_id),
             )
 
     def get_analytics(self):

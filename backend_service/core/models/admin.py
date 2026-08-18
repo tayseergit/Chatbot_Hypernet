@@ -20,6 +20,7 @@ class DashboardAdmin(Base):
     locked_until = Column(DateTime, nullable=True)
     last_login_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, onupdate=func.now())
 
     role = relationship("AdminRole", back_populates="admins")
 
