@@ -15,7 +15,6 @@ build/
 .env.*
 !.env.example
 config.json
-!config.example.json
 
 # IDE
 .vscode/

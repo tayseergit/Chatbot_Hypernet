@@ -88,7 +88,6 @@ Chatbot_Hypernet/
 │   └── pdfs/                           # كتيبات إعداد أجهزة الراوتر (PDFs) لإرسالها للمشتركين
 │
 ├── chatbot.xls                         # ملف الأسئلة الشائعة والإجابات (مصدر أساسي لخدمة RAG)
-├── config.example.json                 # نموذج ملف إعدادات الشركة والرسائل النصية (يُنسخ إلى config.json)
 ├── .env.example                        # نموذج متغيرات البيئة والبيانات السرية (يُنسخ إلى .env)
 ├── seed_permissions.py                 # سكربت لزرع الصلاحيات الافتراضية للوكيل الذكي في قاعدة البيانات
 ├── dashboard.py                        # لوحة سجلات مبسطة (Legacy) مبنية بـ Flask تعمل على المنفذ 5000
@@ -147,17 +146,9 @@ cp .env.example .env
 | `CHATBOT_DEBUG` / `LOG_LEVEL` | تفعيل وضع التصحيح ومستوى السجلات | `false` / `INFO` |
 | `ENABLE_TRACING` / `ENABLE_CRM_LOGS` | تفعيل تتبع الطلبات وتسجيل طلبات الـ CRM | `true` / `true` |
 
-### 2. إعداد ملف تكوين الشركة والرسائل (`config.json`)
+### 2. ملف تكوين الشركة والرسائل (`config.json`)
 
-يقرأ الملف `application/shared/configuration/app_config.py` إعدادات اسم الشركة، رقم مركز الاتصال، رابط واتساب، وقوالب رسائل المصادقة والأخطاء من ملف `config.json`.
-
-قم بنسخ الملف النموذجي `config.example.json` إلى `config.json`:
-
-```bash
-cp config.example.json config.json
-```
-
-وعدّل القيم (`company_name`، `call_center_number`، `whatsapp_link`، ونصوص `messages`) مع الحفاظ على المتغيرات النصية مثل `{attempt}` و`{call_center_number}` و`{whatsapp_link}`.
+يقرأ الملف `application/shared/configuration/app_config.py` إعدادات اسم الشركة (`company_name`)، رقم مركز الاتصال (`call_center_number`)، رابط واتساب (`whatsapp_link`)، وقوالب رسائل المصادقة والأخطاء (`messages`) من ملف `config.json` في حال وجوده في جذر المشروع، مع توفير قيم افتراضية احتياطية في الكود عند غيابه.
 
 ---
 
