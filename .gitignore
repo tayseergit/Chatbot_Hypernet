@@ -13,7 +13,6 @@ build/
 # Environment & Configuration
 .env
 .env.*
-!.env.example
 config.json
 
 # IDE
