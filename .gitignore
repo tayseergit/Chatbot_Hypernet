@@ -10,9 +10,12 @@ venv/
 dist/
 build/
 
-# Environment
+# Environment & Configuration
 .env
 .env.*
+!.env.example
+config.json
+!config.example.json
 
 # IDE
 .vscode/
